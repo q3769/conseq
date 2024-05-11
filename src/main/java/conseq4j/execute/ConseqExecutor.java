@@ -30,15 +30,7 @@ import conseq4j.Terminable;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
 import lombok.NonNull;
@@ -56,6 +48,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
 
     private static final int DEFAULT_CONCURRENCY = Runtime.getRuntime().availableProcessors();
     private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
+    private final ExecutorService adminService = Executors.newSingleThreadExecutor();
     /**
      * The worker thread pool facilitates the overall async execution, independent of the submitted tasks. Any thread
      * from the pool can be used to execute any task, regardless of sequence keys. The pool capacity decides the overall
@@ -112,7 +105,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
     }
 
     /**
-     * @param command     the command to run asynchronously in proper sequence
+     * @param command the command to run asynchronously in proper sequence
      * @param sequenceKey the key under which this task should be sequenced
      * @return future result of the command, not downcast-able from the basic {@link Future} interface.
      * @see ConseqExecutor#submit(Callable, Object)
@@ -151,7 +144,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      * task/stage is never added to the task work queue on the executor map and has no effect on the overall
      * sequential-ness of the work stage executions.
      *
-     * @param task        the task to be called asynchronously with proper sequence
+     * @param task the task to be called asynchronously with proper sequence
      * @param sequenceKey the key under which this task should be sequenced
      * @return future result of the task, not downcast-able from the basic {@link Future} interface.
      */
@@ -162,10 +155,12 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
                 sequenceKey,
                 (k, presentTask) -> (presentTask == null)
                         ? CompletableFuture.supplyAsync(() -> call(task), workerExecutorService)
-                        : presentTask.handleAsync((r, e) -> call(task)));
+                        : presentTask.handleAsync((r, e) -> call(task), workerExecutorService));
         CompletableFuture<?> copy = latestTask.thenApply(result -> result);
-        latestTask.whenCompleteAsync((r, e) -> activeSequentialTasks.computeIfPresent(
-                sequenceKey, (k, checkedTask) -> checkedTask.isDone() ? null : checkedTask));
+        latestTask.whenCompleteAsync(
+                (r, e) -> activeSequentialTasks.computeIfPresent(
+                        sequenceKey, (k, checkedTask) -> checkedTask.isDone() ? null : checkedTask),
+                adminService);
         return (CompletableFuture<T>) copy;
     }
 
@@ -186,16 +181,23 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
 
     @Override
     public void terminate() {
-        workerExecutorService.shutdown();
+        new Thread(() -> {
+                    workerExecutorService.shutdown();
+                    awaitForever().until(this::noTaskPending);
+                    adminService.shutdown();
+                })
+                .start();
     }
 
     @Override
     public boolean isTerminated() {
-        return workerExecutorService.isTerminated();
+        return workerExecutorService.isTerminated() && adminService.isTerminated();
     }
 
     @Override
     public @Nonnull List<Runnable> terminateNow() {
-        return workerExecutorService.shutdownNow();
+        List<Runnable> neverStartedTasks = workerExecutorService.shutdownNow();
+        adminService.shutdownNow();
+        return neverStartedTasks;
     }
 }
