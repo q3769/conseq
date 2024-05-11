@@ -32,9 +32,7 @@ import java.util.concurrent.Executors;
 import lombok.Getter;
 import lombok.ToString;
 
-/**
- * @author Qingtian Wang
- */
+/** @author Qingtian Wang */
 @ToString
 @Getter
 public class SpyingTask implements Runnable {

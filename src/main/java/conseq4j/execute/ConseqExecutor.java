@@ -24,10 +24,7 @@
 
 package conseq4j.execute;
 
-import static org.awaitility.Awaitility.await;
-
 import conseq4j.Terminable;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -35,7 +32,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
 import lombok.NonNull;
 import lombok.ToString;
-import org.awaitility.core.ConditionFactory;
 
 /**
  * Relies on the JDK {@link CompletableFuture} as the sequential executor of the tasks under the same sequence key.
@@ -45,10 +41,10 @@ import org.awaitility.core.ConditionFactory;
 @ThreadSafe
 @ToString
 public final class ConseqExecutor implements SequentialExecutor, Terminable, AutoCloseable {
-
-    private static final int DEFAULT_CONCURRENCY = Runtime.getRuntime().availableProcessors();
     private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
-    private final ExecutorService adminService = Executors.newSingleThreadExecutor();
+    private final ExecutorService adminService = Executors.newThreadPerTaskExecutor(Thread.ofVirtual()
+            .name(this.getClass().getName() + "-admin-thread-", 1)
+            .factory());
     /**
      * The worker thread pool facilitates the overall async execution, independent of the submitted tasks. Any thread
      * from the pool can be used to execute any task, regardless of sequence keys. The pool capacity decides the overall
@@ -61,18 +57,19 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
     }
 
     /**
-     * Returned executor uses {@link ForkJoinPool} of {@link Runtime#availableProcessors()} concurrency, with FIFO async
-     * mode.
+     * Default executor operates with per-task virtual threads.
      *
-     * @return conseq executor with default concurrency
+     * @return conseq executor
      */
     public static @Nonnull ConseqExecutor instance() {
-        return instance(DEFAULT_CONCURRENCY);
+        return instance(Executors.newThreadPerTaskExecutor(Thread.ofVirtual()
+                .name(ConseqExecutor.class.getName() + "-worker-thread-", 1)
+                .factory()));
     }
 
     /**
-     * Returned executor uses {@link ForkJoinPool} of specified concurrency to facilitate async operations, with FIFO
-     * async mode.
+     * Returned executor uses platform thread {@link ForkJoinPool} of specified concurrency to facilitate async
+     * operations in FIFO async mode.
      *
      * @param concurrency max number of tasks that can be run in parallel by the returned executor instance.
      * @return conseq executor with given concurrency
@@ -100,10 +97,6 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         }
     }
 
-    private static ConditionFactory awaitForever() {
-        return await().forever().pollDelay(Duration.ofMillis(10));
-    }
-
     /**
      * @param command the command to run asynchronously in proper sequence
      * @param sequenceKey the key under which this task should be sequenced
@@ -111,18 +104,18 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      * @see ConseqExecutor#submit(Callable, Object)
      */
     @Override
-    public CompletableFuture<Void> execute(@NonNull Runnable command, @NonNull Object sequenceKey) {
+    public @NonNull Future<Void> execute(Runnable command, Object sequenceKey) {
         return submit(Executors.callable(command, null), sequenceKey);
     }
 
     /**
      * Tasks of different sequence keys execute in parallel, pending thread availability from the backing
      * {@link #workerExecutorService}.
-     * <p>
-     * Sequential execution of tasks under the same/equal sequence key is achieved by linearly chaining/queuing the
+     *
+     * <p>Sequential execution of tasks under the same/equal sequence key is achieved by linearly chaining/queuing the
      * task/work stages of the same key, leveraging the {@link CompletableFuture} API.
-     * <p>
-     * A {@link ConcurrentMap} is employed to keep track of each sequence key's pending tasks status. Each map entry
+     *
+     * <p>A {@link ConcurrentMap} is employed to keep track of each sequence key's pending tasks status. Each map entry
      * represents an active sequential executor in-service for all the tasks under the same sequence key; the entry's
      * value is to hold the most recently added task as the tail of the FIFO task queue of the active executor. With
      * this executor map, an active executor can be located by its sequence key so that a subsequent task of the same
@@ -134,8 +127,8 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      * work stage will not start executing before the previous stage completes, and will have to finish executing before
      * the next task's work stage can start executing. Such linear progression of the work tasks/stages ensures the
      * sequential-ness of task execution under the same sequence key.
-     * <p>
-     * A separate administrative task/stage is triggered to run at the completion of each work task/stage. Under the
+     *
+     * <p>A separate administrative task/stage is triggered to run at the completion of each work task/stage. Under the
      * same sequence key, this admin task will locate the executor entry in the map, and remove the entry if its work
      * stage is complete. Otherwise, if the work stage is not complete, the admin task does nothing; the incomplete work
      * stage stays in the map under the same sequence key, ready to be trailed by the next work stage. This
@@ -150,29 +143,27 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      */
     @Override
     @SuppressWarnings("unchecked")
-    public <T> CompletableFuture<T> submit(@NonNull Callable<T> task, @NonNull Object sequenceKey) {
+    public <T> @NonNull Future<T> submit(Callable<T> task, Object sequenceKey) {
         CompletableFuture<?> latestTask = activeSequentialTasks.compute(
                 sequenceKey,
                 (k, presentTask) -> (presentTask == null)
                         ? CompletableFuture.supplyAsync(() -> call(task), workerExecutorService)
                         : presentTask.handleAsync((r, e) -> call(task), workerExecutorService));
-        CompletableFuture<?> copy = latestTask.thenApply(result -> result);
+        Future<?> copy = new ProtectiveFuture<>(latestTask);
         latestTask.whenCompleteAsync(
                 (r, e) -> activeSequentialTasks.computeIfPresent(
                         sequenceKey, (k, checkedTask) -> checkedTask.isDone() ? null : checkedTask),
                 adminService);
-        return (CompletableFuture<T>) copy;
+        return (ProtectiveFuture<T>) copy;
     }
 
     /**
-     * First wait until no more task pending, then orderly shutdown. For direct shutdown operations regardless of
-     * pending tasks, use the {@link Terminable} methods instead.
+     * Orderly shutdown, and awaits thread pool termination.
      */
     @Override
     public void close() {
-        awaitForever().until(this::noTaskPending);
-        terminate();
-        awaitForever().until(this::isTerminated);
+        workerExecutorService.close();
+        adminService.close();
     }
 
     boolean noTaskPending() {
@@ -182,8 +173,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
     @Override
     public void terminate() {
         new Thread(() -> {
-                    workerExecutorService.shutdown();
-                    awaitForever().until(this::noTaskPending);
+                    workerExecutorService.close();
                     adminService.shutdown();
                 })
                 .start();
@@ -199,5 +189,60 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         List<Runnable> neverStartedTasks = workerExecutorService.shutdownNow();
         adminService.shutdownNow();
         return neverStartedTasks;
+    }
+
+    /**
+     * Protective copy of the wrapped {@link CompletableFuture} instance, so the client does not get to interact with
+     * internal thread resources
+     *
+     * @param <V> The value type held by the Future
+     */
+    public static final class ProtectiveFuture<V> implements Future<V> {
+        private final CompletableFuture<V> completableFuture;
+
+        private ProtectiveFuture(CompletableFuture<V> completableFuture) {
+            this.completableFuture = completableFuture;
+        }
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            return this.completableFuture.cancel(mayInterruptIfRunning);
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return this.completableFuture.isCancelled();
+        }
+
+        @Override
+        public boolean isDone() {
+            return this.completableFuture.isDone();
+        }
+
+        @Override
+        public V get() throws InterruptedException, ExecutionException {
+            return this.completableFuture.get();
+        }
+
+        @Override
+        public V get(long timeout, @NonNull TimeUnit unit)
+                throws InterruptedException, ExecutionException, TimeoutException {
+            return this.completableFuture.get(timeout, unit);
+        }
+
+        @Override
+        public V resultNow() {
+            return this.completableFuture.resultNow();
+        }
+
+        @Override
+        public Throwable exceptionNow() {
+            return this.completableFuture.exceptionNow();
+        }
+
+        @Override
+        public State state() {
+            return this.completableFuture.state();
+        }
     }
 }

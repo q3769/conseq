@@ -35,10 +35,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
-import lombok.NonNull;
 import lombok.ToString;
 import lombok.experimental.Delegate;
 import org.awaitility.core.ConditionFactory;
@@ -57,7 +55,7 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
 
     /**
      * @param concurrency max count of "buckets"/executors, i.e. the max number of unrelated tasks that can be
-     * concurrently executed at any given time by this conseq instance.
+     *     concurrently executed at any given time by this conseq instance.
      */
     private ConseqServiceFactory(int concurrency) {
         if (concurrency <= 0) {
@@ -90,19 +88,15 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
         return await().forever().pollDelay(Duration.ofMillis(10));
     }
 
-    /**
-     * @return a single-thread executor that does not support any shutdown action.
-     */
+    /** @return a single-thread executor that does not support any shutdown action. */
     @Override
-    public ExecutorService getExecutorService(@NonNull Object sequenceKey) {
+    public ExecutorService getExecutorService(Object sequenceKey) {
         return this.sequentialExecutors.computeIfAbsent(
                 bucketOf(sequenceKey),
                 bucket -> new ShutdownDisabledExecutorService(Executors.newSingleThreadExecutor()));
     }
 
-    /**
-     * Shuts down all executors and awaits termination to complete
-     */
+    /** Shuts down all executors and awaits termination to complete */
     @Override
     public void close() {
         sequentialExecutors.values().forEach(ShutdownDisabledExecutorService::shutdownDelegate);
@@ -128,7 +122,7 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
         return sequentialExecutors.values().parallelStream()
                 .map(ShutdownDisabledExecutorService::shutdownDelegateNow)
                 .flatMap(Collection::stream)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -140,14 +134,13 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
     static final class ShutdownDisabledExecutorService implements ExecutorService {
 
         private static final String SHUTDOWN_UNSUPPORTED_MESSAGE =
-                "Shutdown not supported: Tasks being executed by this service may be from unrelated owners; shutdown features are disabled to prevent undesired task cancellation on other owners";
+                "Shutdown not supported: Tasks being executed by this service may be from unrelated owners; shutdown"
+                        + " features are disabled to prevent undesired task cancellation on other owners";
 
         @Delegate(excludes = ShutdownOperations.class)
         private final ExecutorService delegate;
 
-        /**
-         * @param delegate the delegate {@link ExecutorService} to run the submitted task(s).
-         */
+        /** @param delegate the delegate {@link ExecutorService} to run the submitted task(s). */
         public ShutdownDisabledExecutorService(ExecutorService delegate) {
             this.delegate = delegate;
         }
@@ -162,9 +155,7 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
             throw new UnsupportedOperationException(SHUTDOWN_UNSUPPORTED_MESSAGE);
         }
 
-        /**
-         * @see #shutdown()
-         */
+        /** @see #shutdown() */
         @Override
         public @Nonnull List<Runnable> shutdownNow() {
             throw new UnsupportedOperationException(SHUTDOWN_UNSUPPORTED_MESSAGE);
@@ -179,9 +170,7 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
             return this.delegate.shutdownNow();
         }
 
-        /**
-         * Methods that require complete overriding instead of delegation/decoration
-         */
+        /** Methods that require complete overriding instead of delegation/decoration */
         private interface ShutdownOperations {
             void shutdown();
 

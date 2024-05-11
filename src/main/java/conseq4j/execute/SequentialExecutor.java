@@ -30,8 +30,8 @@ import java.util.concurrent.Future;
 /**
  * Main API of conseq executor, bypassing the intermediate ({@link java.util.concurrent.ExecutorService}) API, to
  * service the submitted task per its sequence key.
- * <p>
- * A public implementation should be thread-safe. In the context of asynchronous concurrency and sequencing,
+ *
+ * <p>A public implementation should be thread-safe. In the context of asynchronous concurrency and sequencing,
  * thread-safety goes beyond the concerns of data corruption due to concurrent modification, into that of execution
  * order across multiple tasks. By definition, though, there is no such thing as order or sequence among tasks submitted
  * concurrently by different threads. Such multi-thread submitted tasks can be executed in any order, regardless of

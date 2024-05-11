@@ -21,7 +21,8 @@ execution order at the same time.
 
 ## Prerequisite
 
-- Java 8 or better
+- Java 8 or better for versions before 20230922.20230925.0 (exclusive)
+- Java 21 or better for versions after 20230922.20230925.0 (inclusive)
 
 ## Get it...
 
@@ -31,21 +32,21 @@ Install as a compile-scope dependency in Maven or other build tools alike.
 
 ## Use it...
 
-### General notes
+Some general notes:
 
-#### Sequence keys
+- Sequence keys
 
 A sequence key cannot be `null`. Any two keys, `sequenceKey1` and `sequenceKey2`, are considered "the same sequence key"
 if and only if `Objects.equals(sequenceKey1, sequenceKey2)` returns `true`.
 
-#### Thread safety
+- Thread safety
 
 A conseq4j instance is thread-safe in and of itself. The usual thread-safety rules and concerns, however, still apply
 when programming the executable tasks. Moreover, in the context of concurrency and sequencing, the thread-safety concern
 goes beyond concurrent modification of individual-task data, into that of meaningful execution order among multiple
 related tasks.
 
-#### Concurrency and sequencing
+- Concurrency and sequencing
 
 First of all, by definition, there is no such thing as order or sequence among tasks submitted concurrently by different
 threads. No particular execution order is guaranteed on those concurrent tasks, regardless of their sequence keys. The
@@ -63,7 +64,7 @@ etc...
 
 ### Style 1: summon a sequential executor by its sequence key, then use the executor as with a JDK `ExecutorService`
 
-#### API
+- API
 
 ```java
 public interface SequentialExecutorServiceFactory {
@@ -89,7 +90,7 @@ Consider using this style when the summoned executor needs to provide
 the [syntax and semantic richness](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html#method.summary)
 of the JDK `ExecutorService` API.
 
-#### Sample usage
+- Sample usage
 
 ```java
 public class MessageConsumer {
@@ -121,38 +122,43 @@ public class MessageConsumer {
 }
 ```
 
-- The implementation of this thread-affinity style relies on hashing of the sequence keys into a fixed number of
-  "buckets". These buckets are each associated with a sequential executor. The same sequence key is always hashed to and
-  summons back the same executor. Single-threaded, each executor ensures the execution order of all its tasks is the
-  same as they are submitted; excessive tasks pending execution are buffered in a FIFO task queue. Thus, the total
-  number of buckets (i.e. the max number of available executors and the general concurrency) is the maximum number of
-  tasks that can be executed in parallel at any given time.
-- As with hashing, collision may occur among different sequence keys. When hash collision happens, tasks of different
-  sequence keys are assigned to the same executor. Due to the single-thread setup, the executor still ensures the local
-  sequential execution order for each individual sequence key's tasks. However, unrelated tasks of different sequence
-  keys now assigned to the same bucket/executor may delay each other's execution inadvertently while waiting in the
-  executor's task queue. Consider this a trade-off of the executor's having the same syntax and semantic richness as a
-  JDK [ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html).
-- To account for hash collision, conseq4j does not support any shutdown action on the API-provided
-  executor ([ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html))
-  instance. That is to prevent unintended task cancellation across different sequence keys.
-  The [Future](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html) instance(s) subsequently
-  returned by the executor, though, is still cancellable. The hash collision may not be an issue for workloads that are
-  asynchronous and focused on overall through-put, but is something to be aware of.
-- The default general concurrency is the JVM
-  run-time's [availableProcessors](https://docs.oracle.com/javase/8/docs/api/java/lang/Runtime.html#availableProcessors--):
+The implementation of this thread-affinity style relies on hashing of the sequence keys into a fixed number of
+"buckets". These buckets are each associated with a sequential executor. The same sequence key is always hashed to and
+summons back the same executor. Single-threaded, each executor ensures the execution order of all its tasks is the
+same as they are submitted; excessive tasks pending execution are buffered in a FIFO task queue. Thus, the total
+number of buckets (i.e. the max number of available executors and the general concurrency) is the maximum number of
+tasks that can be executed in parallel at any given time.
+
+As with hashing, collision may occur among different sequence keys. When hash collision happens, tasks of different
+sequence keys are assigned to the same executor. Due to the single-thread setup, the executor still ensures the local
+sequential execution order for each individual sequence key's tasks. However, unrelated tasks of different sequence
+keys now assigned to the same bucket/executor may delay each other's execution inadvertently while waiting in the
+executor's task queue. Consider this a trade-off of the executor's having the same syntax and semantic richness as a
+JDK [ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html).
+
+To account for hash collision, conseq4j does not support any shutdown action on the API-provided
+executor ([ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html))
+instance. That is to prevent unintended task cancellation across different sequence keys.
+The [Future](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html) instance(s) subsequently
+returned by the executor, though, is still cancellable. The hash collision may not be an issue for workloads that are
+asynchronous and focused on overall through-put, but is something to be aware of.
+
+The default general concurrency is the JVM
+run-time's [availableProcessors](https://docs.oracle.com/javase/8/docs/api/java/lang/Runtime.html#availableProcessors--):
+
   ```jshelllanguage
   ConseqServiceFactory.instance();
   ```
 
-  The concurrency can be customized:
+The concurrency can be customized:
+
   ```jshelllanguage
   ConseqServiceFactory.instance(10)
   ```
 
 ### Style 2: submit each task directly for execution, together with its sequence key
 
-#### API
+- API
 
 ```java
 public interface SequentialExecutor {
@@ -182,22 +188,18 @@ This API style is more concise. Bypassing the JDK ExecutorService API, it servic
 execution semantics holds: Tasks of the same sequence key are executed in the same submission order; tasks of different
 sequence keys are managed to execute in parallel.
 
-Prefer this style when the full-blown syntax and semantic support of
+By making use of Java 21 virtual threads, the style default to have no preset limit on the overall concurrency when
+executing tasks. Prefer this style when the full-blown syntax and semantic support of
 JDK [ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html) is not
 required.
 
-#### Sample usage
+- Sample usage
 
 ```java
 public class MessageConsumer {
 
     /**
-     * Default executor concurrency is java.lang.Runtime.availableProcessors.
-     * <p>
-     * Or to provide a custom concurrency of 10, for example:
-     * <code>
-     * private SequentialExecutor conseqExecutor = ConseqExecutor.instance(10));
-     * </code>
+     * Default executor has no preset limit on overall concurrency, running on virtual thread per task.
      */
     private final SequentialExecutor conseqExecutor = ConseqExectuor.instance();
 
@@ -205,11 +207,11 @@ public class MessageConsumer {
     private ShoppingEventProcessor shoppingEventProcessor;
 
     /**
-     * Suppose run-time invocation of this method is managed by the messaging provider. This is usually via a single 
+     * Suppose run-time invocation of this method is managed by the messaging provider. This is usually via a single
      * caller thread.
      * <p>
-     * Concurrency is achieved when shopping events of different shopping cart IDs are processed in parallel by 
-     * different backing threads. Sequence is maintained for all shopping events of the same shopping cart ID, via 
+     * Concurrency is achieved when shopping events of different shopping cart IDs are processed in parallel by
+     * different backing threads. Sequence is maintained for all shopping events of the same shopping cart ID, via
      * linear progression of execution stages with {@link java.util.concurrent.CompletableFuture}.
      */
     public void onMessage(Message shoppingEvent) {
@@ -218,33 +220,37 @@ public class MessageConsumer {
 }
 ```
 
-- The interface of this direct-execute style uses `Future` as the return type, mainly to reduce conceptual weight of the
-  API. The implementation actually returns `CompletableFuture`, and can be used/cast as such if need be.
-- The implementation relies on
-  JDK's [CompletableFuture](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CompletableFuture.html) to
-  achieve sequential execution of related tasks. One single pool of threads is used to facilitate the overall
-  asynchronous execution. The concurrency to execute unrelated tasks is generally limited only by the backing work
-  thread pool's capacity.
-- Instead of thread-affinity or bucket hashing, tasks are decoupled from their execution threads. All pooled threads are
-  anonymous and interchangeable to execute any tasks. Even sequential tasks of the same sequence key may be executed by
-  different threads, albeit in sequential order. When the work thread pool has idle threads available, a task awaiting
-  execution must have been blocked only by its own related task(s) of the same sequence key - as is necessary, and not
-  by unrelated tasks of different sequence keys in the same "bucket" - as is unnecessary. This can be a desired
-  advantage over the thread-affinity API style, at the trade-off of lesser syntax and semantic richness than the
-  JDK [ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html).
-- The default ConseqExecutor instance uses a `ForkJoinPool` with parallelism equal to JVM
-  run-time's [availableProcessors](https://docs.oracle.com/javase/8/docs/api/java/lang/Runtime.html#availableProcessors--):
+The implementation relies on
+JDK's [CompletableFuture](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CompletableFuture.html) to
+achieve sequential execution of related tasks. One single pool of threads is used to facilitate the overall
+asynchronous execution. The concurrency to execute unrelated tasks is generally limited only by the backing work
+thread pool's capacity, or unlimited in the case of default/virtual thread mode.
+
+Instead of thread-affinity or bucket hashing, tasks are decoupled from their execution threads. All pooled threads are
+anonymous and interchangeable to execute any tasks. Even sequential tasks of the same sequence key may be executed by
+different threads, albeit in sequential order. When the work thread pool has idle threads available, a task awaiting
+execution must have been blocked only by its own related task(s) of the same sequence key - as is necessary, and not
+by unrelated tasks of different sequence keys in the same "bucket" - as is unnecessary. This can be a desired
+advantage over the thread-affinity API style, at the trade-off of lesser syntax and semantic richness than the
+JDK [ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html).
+
+The default ConseqExecutor instance uses virtual thread per task, and has no preset limit on overall concurrency.
+
   ```jshelllanguage
   ConseqExecutor.instance()
   ```
-  Or, the concurrency/parallelism can be customized:
+
+Or, the concurrency/parallelism can be customized to use a platform thread `ForkJoinPool` of the specified capacity:
+
   ```jshelllanguage
   ConseqExecutor.instance(10)
   ```
-- The `ConseqExecutor` instance can also use a fully-customized `ExecutorService` to power its async operations, e.g.
-  with Virtual Threads:
+
+The `ConseqExecutor` instance can also use a fully-customized `ExecutorService` to power its async operations, e.g.
+with a fixed sized platform-thread pool:
+
   ```jshelllanguage
-  ConseqExecutor.instance(Executors.newVirtualThreadPerTaskExecutor())
+  ConseqExecutor.instance(Executors.newFixedThreadPool(10))
   ```
 
 ## Full disclosure - Asynchronous Conundrum

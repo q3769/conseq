@@ -41,9 +41,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-/**
- * @author Qingtian Wang
- */
+/** @author Qingtian Wang */
 class ConseqServiceFactoryTest {
     private static final int TASK_COUNT = 100;
 
@@ -53,7 +51,7 @@ class ConseqServiceFactoryTest {
 
     void assertSingleThread(List<SpyingTask> tasks) {
         List<String> distinctThreads =
-                tasks.stream().map(SpyingTask::getRunThreadName).distinct().collect(toList());
+                tasks.stream().map(SpyingTask::getRunThreadName).distinct().toList();
         assertEquals(1, distinctThreads.size());
     }
 

@@ -32,9 +32,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import org.junit.jupiter.api.Test;
 
-/**
- * @author q3769
- */
+/** @author q3769 */
 class ConfigTest {
 
     @Test
