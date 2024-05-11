@@ -157,9 +157,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         return (ProtectiveFuture<T>) copy;
     }
 
-    /**
-     * Orderly shutdown, and awaits thread pool termination.
-     */
+    /** Orderly shutdown, and awaits thread pool termination. */
     @Override
     public void close() {
         workerExecutorService.close();
