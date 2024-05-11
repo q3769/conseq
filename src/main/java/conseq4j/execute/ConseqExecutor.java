@@ -42,7 +42,7 @@ import lombok.ToString;
 @ToString
 public final class ConseqExecutor implements SequentialExecutor, Terminable, AutoCloseable {
     private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
-    private final ExecutorService adminService = Executors.newThreadPerTaskExecutor(Thread.ofVirtual()
+    private final ExecutorService adminExecutorService = Executors.newThreadPerTaskExecutor(Thread.ofVirtual()
             .name(this.getClass().getName() + "-admin-thread-", 1)
             .factory());
     /**
@@ -75,7 +75,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      * @return conseq executor with given concurrency
      */
     public static @Nonnull ConseqExecutor instance(int concurrency) {
-        return instance(new ForkJoinPool(concurrency, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true));
+        return instance(Executors.newWorkStealingPool(concurrency));
     }
 
     /**
@@ -153,7 +153,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         latestTask.whenCompleteAsync(
                 (r, e) -> activeSequentialTasks.computeIfPresent(
                         sequenceKey, (k, checkedTask) -> checkedTask.isDone() ? null : checkedTask),
-                adminService);
+                adminExecutorService);
         return (ProtectiveFuture<T>) copy;
     }
 
@@ -161,7 +161,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
     @Override
     public void close() {
         workerExecutorService.close();
-        adminService.close();
+        adminExecutorService.close();
     }
 
     boolean noTaskPending() {
@@ -172,20 +172,20 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
     public void terminate() {
         new Thread(() -> {
                     workerExecutorService.close();
-                    adminService.shutdown();
+                    adminExecutorService.shutdown();
                 })
                 .start();
     }
 
     @Override
     public boolean isTerminated() {
-        return workerExecutorService.isTerminated() && adminService.isTerminated();
+        return workerExecutorService.isTerminated() && adminExecutorService.isTerminated();
     }
 
     @Override
     public @Nonnull List<Runnable> terminateNow() {
         List<Runnable> neverStartedTasks = workerExecutorService.shutdownNow();
-        adminService.shutdownNow();
+        adminExecutorService.shutdownNow();
         return neverStartedTasks;
     }
 
