@@ -24,23 +24,24 @@
 
 package conseq4j;
 
-import org.awaitility.Awaitility;
+import static java.util.stream.Collectors.toList;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.stream.IntStream;
-
-import static java.util.stream.Collectors.toList;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.awaitility.Awaitility;
 
 public class TestUtils {
 
-    private TestUtils() {
-    }
+    private TestUtils() {}
 
     public static long actualExecutionThreadCountIfAllCompleteNormal(List<Future<SpyingTask>> futures) {
-        return getIfAllCompleteNormal(futures).stream().map(SpyingTask::getRunThreadName).distinct().count();
+        return getIfAllCompleteNormal(futures).stream()
+                .map(SpyingTask::getRunThreadName)
+                .distinct()
+                .count();
     }
 
     public static int actualExecutionThreadCount(List<SpyingTask> tasks) {
@@ -73,13 +74,15 @@ public class TestUtils {
     }
 
     public static <T> List<T> getIfAllCompleteNormal(List<Future<T>> futures) {
-        return futures.stream().map(f -> {
-            try {
-                return f.get();
-            } catch (InterruptedException | ExecutionException ex) {
-                throw new IllegalStateException(ex);
-            }
-        }).collect(toList());
+        return futures.stream()
+                .map(f -> {
+                    try {
+                        return f.get();
+                    } catch (InterruptedException | ExecutionException ex) {
+                        throw new IllegalStateException(ex);
+                    }
+                })
+                .collect(toList());
     }
 
     public static <T> int normalCompletionCount(List<Future<T>> resultFutures) {

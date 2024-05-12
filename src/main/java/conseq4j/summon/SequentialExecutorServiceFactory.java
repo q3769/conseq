@@ -27,8 +27,8 @@ import java.util.concurrent.ExecutorService;
 
 /**
  * Main API of conseq service factory, producing sequential executor instances summoned by sequence keys.
- * <p>
- * For sequencing, the executor of the same sequence key should execute all tasks sequentially in the same order of
+ *
+ * <p>For sequencing, the executor of the same sequence key should execute all tasks sequentially in the same order of
  * submissions. For concurrency, executor instances of different sequence keys should run in parallel by different
  * threads.
  *
@@ -36,10 +36,9 @@ import java.util.concurrent.ExecutorService;
  */
 public interface SequentialExecutorServiceFactory {
     /**
-     * @param sequenceKey
-     *         an {@link Object} instance whose hash code is used to summon the corresponding executor.
+     * @param sequenceKey an {@link Object} instance whose hash code is used to summon the corresponding executor.
      * @return the sequential executor of type {@link java.util.concurrent.ExecutorService} that executes all tasks of
-     *         this sequence key in the same order as they are submitted.
+     *     this sequence key in the same order as they are submitted.
      */
     ExecutorService getExecutorService(Object sequenceKey);
 }

@@ -24,17 +24,25 @@
 
 package conseq4j.execute;
 
+import static coco4j.Tasks.callUnchecked;
+
+import coco4j.DefensiveFuture;
 import conseq4j.Terminable;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import javax.annotation.Nonnull;
+import javax.annotation.concurrent.ThreadSafe;
 import lombok.NonNull;
 import lombok.ToString;
 import org.awaitility.Awaitility;
 import org.awaitility.core.ConditionFactory;
-
-import javax.annotation.Nonnull;
-import javax.annotation.concurrent.ThreadSafe;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.*;
 
 /**
  * Relies on the JDK {@link CompletableFuture} as the sequential executor of the tasks under the same sequence key.
@@ -45,8 +53,10 @@ import java.util.concurrent.*;
 @ToString
 public final class ConseqExecutor implements SequentialExecutor, Terminable, AutoCloseable {
 
+    public static final int ADMIN_WORKER_PARALLELISM =
+            Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
     private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
-    private final ExecutorService adminService = Executors.newSingleThreadExecutor();
+    private final ExecutorService adminService = Executors.newWorkStealingPool(ADMIN_WORKER_PARALLELISM);
     /**
      * The worker thread pool facilitates the overall async execution, independent of the submitted tasks. Any thread
      * from the pool can be used to execute any task, regardless of sequence keys. The pool capacity decides the overall
@@ -58,25 +68,21 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         this.workerExecutorService = workerExecutorService;
     }
 
-    /**
-     * @return conseq executor with default concurrency
-     */
+    /** @return conseq executor with default concurrency */
     public static @Nonnull ConseqExecutor instance() {
         return instance(Runtime.getRuntime().availableProcessors());
     }
 
     /**
-     * @param concurrency
-     *         max number of tasks that can be run in parallel by the returned executor instance.
+     * @param concurrency max number of tasks that can be run in parallel by the returned executor instance.
      * @return conseq executor with given concurrency
      */
     public static @Nonnull ConseqExecutor instance(int concurrency) {
-        return instance(new ForkJoinPool(concurrency, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true));
+        return instance(Executors.newWorkStealingPool(concurrency));
     }
 
     /**
-     * @param workerExecutorService
-     *         ExecutorService that backs the async operations of worker threads
+     * @param workerExecutorService ExecutorService that backs the async operations of worker threads
      * @return instance of {@link ConseqExecutor}
      */
     public static @Nonnull ConseqExecutor instance(ExecutorService workerExecutorService) {
@@ -87,35 +93,25 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         return Awaitility.await().forever();
     }
 
-    private static <T> T call(Callable<T> task) {
-        try {
-            return task.call();
-        } catch (Exception e) {
-            throw new CompletionException(e);
-        }
-    }
-
     /**
-     * @param command
-     *         the command to run asynchronously in proper sequence
-     * @param sequenceKey
-     *         the key under which this task should be sequenced
+     * @param command the command to run asynchronously in proper sequence
+     * @param sequenceKey the key under which this task should be sequenced
      * @return future result of the command, not downcast-able from the basic {@link Future} interface.
      * @see ConseqExecutor#submit(Callable, Object)
      */
     @Override
-    public CompletableFuture<Void> execute(@NonNull Runnable command, @NonNull Object sequenceKey) {
+    public @NonNull Future<Void> execute(@NonNull Runnable command, @NonNull Object sequenceKey) {
         return submit(Executors.callable(command, null), sequenceKey);
     }
 
     /**
      * Tasks of different sequence keys execute in parallel, pending thread availability from the backing
      * {@link #workerExecutorService}.
-     * <p>
-     * Sequential execution of tasks under the same/equal sequence key is achieved by linearly chaining/queuing the
+     *
+     * <p>Sequential execution of tasks under the same/equal sequence key is achieved by linearly chaining/queuing the
      * task/work stages of the same key, leveraging the {@link CompletableFuture} API.
-     * <p>
-     * A {@link ConcurrentMap} is employed to keep track of each sequence key's pending tasks status. Each map entry
+     *
+     * <p>A {@link ConcurrentMap} is employed to keep track of each sequence key's pending tasks status. Each map entry
      * represents an active sequential executor in-service for all the tasks under the same sequence key; the entry's
      * value is to hold the most recently added task as the tail of the FIFO task queue of the active executor. With
      * this executor map, an active executor can be located by its sequence key so that a subsequent task of the same
@@ -127,8 +123,8 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      * work stage will not start executing before the previous stage completes, and will have to finish executing before
      * the next task's work stage can start executing. Such linear progression of the work tasks/stages ensures the
      * sequential-ness of task execution under the same sequence key.
-     * <p>
-     * A separate administrative task/stage is triggered to run at the completion of each work task/stage. Under the
+     *
+     * <p>A separate administrative task/stage is triggered to run at the completion of each work task/stage. Under the
      * same sequence key, this admin task will locate the executor entry in the map, and remove the entry if its work
      * stage is complete. Otherwise, if the work stage is not complete, the admin task does nothing; the incomplete work
      * stage stays in the map under the same sequence key, ready to be trailed by the next work stage. This
@@ -137,32 +133,34 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      * task/stage is never added to the task work queue on the executor map and has no effect on the overall
      * sequential-ness of the work stage executions.
      *
-     * @param task
-     *         the task to be called asynchronously with proper sequence
-     * @param sequenceKey
-     *         the key under which this task should be sequenced
+     * @param task the task to be called asynchronously with proper sequence
+     * @param sequenceKey the key under which this task should be sequenced
      * @return future result of the task, not downcast-able from the basic {@link Future} interface.
      */
     @Override
     @SuppressWarnings("unchecked")
-    public <T> CompletableFuture<T> submit(@NonNull Callable<T> task, @NonNull Object sequenceKey) {
-        CompletableFuture<?> latestTask = activeSequentialTasks.compute(sequenceKey,
-                (k, presentTask) -> (presentTask == null) ?
-                        CompletableFuture.supplyAsync(() -> call(task), workerExecutorService) :
-                        presentTask.handleAsync((r, e) -> call(task), workerExecutorService));
-        CompletableFuture<?> copy = latestTask.thenApply(r -> r);
-        latestTask.whenCompleteAsync((r, e) -> activeSequentialTasks.computeIfPresent(sequenceKey,
-                (k, checkedTask) -> checkedTask.isDone() ? null : checkedTask), adminService);
-        return (CompletableFuture<T>) copy;
+    public <T> @NonNull Future<T> submit(@NonNull Callable<T> task, @NonNull Object sequenceKey) {
+        CompletableFuture<?> taskCompletable = activeSequentialTasks.compute(
+                sequenceKey,
+                (k, presentTask) -> (presentTask == null)
+                        ? CompletableFuture.supplyAsync(() -> callUnchecked(task), workerExecutorService)
+                        : presentTask.handleAsync((r, e) -> callUnchecked(task), workerExecutorService));
+        CompletableFuture<?> copy = taskCompletable.thenApply(r -> r);
+        taskCompletable.whenCompleteAsync(
+                (r, e) -> activeSequentialTasks.computeIfPresent(
+                        sequenceKey, (k, checkedTask) -> checkedTask.isDone() ? null : checkedTask),
+                adminService);
+        return (Future<T>) new DefensiveFuture<>(copy);
     }
 
     @Override
     public void shutdown() {
         new Thread(() -> {
-            workerExecutorService.shutdown();
-            await().until(activeSequentialTasks::isEmpty);
-            adminService.shutdown();
-        }).start();
+                    workerExecutorService.shutdown();
+                    await().until(activeSequentialTasks::isEmpty);
+                    adminService.shutdown();
+                })
+                .start();
     }
 
     @Override

@@ -23,27 +23,24 @@
  */
 package conseq4j.summon;
 
-import com.google.common.collect.Range;
-import conseq4j.SpyingTask;
-import conseq4j.TestUtils;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.stream.Collectors;
-
 import static conseq4j.TestUtils.createSpyingTasks;
 import static conseq4j.TestUtils.getIfAllCompleteNormal;
 import static java.util.stream.Collectors.toList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * @author Qingtian Wang
- */
+import com.google.common.collect.Range;
+import conseq4j.SpyingTask;
+import conseq4j.TestUtils;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.Test;
+
+/** @author Qingtian Wang */
 class ConseqServiceFactoryTest {
     private static final int TASK_COUNT = 100;
 
@@ -62,12 +59,15 @@ class ConseqServiceFactoryTest {
         ConseqServiceFactory withHigherConcurrencyThanTaskCount = ConseqServiceFactory.instance(TASK_COUNT * 2);
 
         List<Future<SpyingTask>> futures = createSpyingTasks(TASK_COUNT).stream()
-                .map(task -> withHigherConcurrencyThanTaskCount.getExecutorService(UUID.randomUUID())
+                .map(task -> withHigherConcurrencyThanTaskCount
+                        .getExecutorService(UUID.randomUUID())
                         .submit(task.toCallable()))
                 .collect(toList());
 
-        final long totalRunThreads =
-                getIfAllCompleteNormal(futures).stream().map(SpyingTask::getRunThreadName).distinct().count();
+        final long totalRunThreads = getIfAllCompleteNormal(futures).stream()
+                .map(SpyingTask::getRunThreadName)
+                .distinct()
+                .count();
         assertTrue(totalRunThreads <= TASK_COUNT);
     }
 
@@ -80,7 +80,8 @@ class ConseqServiceFactoryTest {
         ConseqServiceFactory withLowConcurrency = ConseqServiceFactory.instance(lowConcurrency);
         long lowConcurrencyStart = System.nanoTime();
         List<Future<SpyingTask>> lowConcurrencyFutures = sameTasks.stream()
-                .map(t -> withLowConcurrency.getExecutorService(UUID.randomUUID()).submit(t.toCallable()))
+                .map(t ->
+                        withLowConcurrency.getExecutorService(UUID.randomUUID()).submit(t.toCallable()))
                 .collect(toList());
         TestUtils.awaitFutures(lowConcurrencyFutures);
         long lowConcurrencyTime = System.nanoTime() - lowConcurrencyStart;
@@ -88,7 +89,9 @@ class ConseqServiceFactoryTest {
         ConseqServiceFactory withHighConcurrency = ConseqServiceFactory.instance(highConcurrency);
         long highConcurrencyStart = System.nanoTime();
         List<Future<SpyingTask>> highConcurrencyFutures = sameTasks.stream()
-                .map(task -> withHighConcurrency.getExecutorService(UUID.randomUUID()).submit(task.toCallable()))
+                .map(task -> withHighConcurrency
+                        .getExecutorService(UUID.randomUUID())
+                        .submit(task.toCallable()))
                 .collect(toList());
         TestUtils.awaitFutures(highConcurrencyFutures);
         long highConcurrencyTime = System.nanoTime() - highConcurrencyStart;
@@ -128,7 +131,8 @@ class ConseqServiceFactoryTest {
         List<SpyingTask> tasks = createSpyingTasks(TASK_COUNT);
         UUID sameSequenceKey = UUID.randomUUID();
 
-        tasks.forEach(task -> defaultConseqServiceFactory.getExecutorService(sameSequenceKey).execute(task));
+        tasks.forEach(task ->
+                defaultConseqServiceFactory.getExecutorService(sameSequenceKey).execute(task));
 
         TestUtils.awaitAllComplete(tasks);
         assertSingleThread(tasks);
