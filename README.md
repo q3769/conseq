@@ -136,7 +136,7 @@ keys now assigned to the same bucket/executor may delay each other's execution i
 executor's task queue. Consider this a trade-off of the executor's having the same syntax and semantic richness as a
 JDK [ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html).
 
-To account for hash collision, conseq4j does not support any shutdown action on the API-provided
+To account for hash collision, conseq4j Style 1 does not support any shutdown action on the API-provided
 executor ([ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html))
 instance. That is to prevent unintended task cancellation across different sequence keys.
 The [Future](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html) instance(s) subsequently
@@ -188,8 +188,10 @@ This API style is more concise. Bypassing the JDK ExecutorService API, it servic
 execution semantics holds: Tasks of the same sequence key are executed in the same submission order; tasks of different
 sequence keys are managed to execute in parallel.
 
-By making use of Java 21 virtual threads, the style default to have no preset limit on the overall concurrency when
-executing tasks. Prefer this style when the full-blown syntax and semantic support of
+For versions requiring Java 21+, conseq4j Style 2 defaults to have no preset limit on the overall concurrency when
+executing tasks; for other versions, this style's default concurrency is the number of JVM run-time'
+s [availableProcessors](https://docs.oracle.com/javase/8/docs/api/java/lang/Runtime.html#availableProcessors--). Prefer
+this style when the full-blown syntax and semantic support of
 JDK [ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html) is not
 required.
 
@@ -234,20 +236,21 @@ by unrelated tasks of different sequence keys in the same "bucket" - as is unnec
 advantage over the thread-affinity API style, at the trade-off of lesser syntax and semantic richness than the
 JDK [ExecutorService](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html).
 
-The default ConseqExecutor instance uses virtual thread per task, and has no preset limit on overall concurrency.
+For versions requiring Java 21+, the default ConseqExecutor instance uses Virtual thread per task, and has no preset
+limit on overall concurrency. For other versions, the default concurrency is the number of JVM's available processors.
 
   ```jshelllanguage
   ConseqExecutor.instance()
   ```
 
-Or, the concurrency/parallelism can be customized to use a platform thread `ForkJoinPool` of the specified capacity:
+The concurrency/parallelism can be customized to use a Platform thread `ForkJoinPool` of the specified capacity:
 
   ```jshelllanguage
   ConseqExecutor.instance(10)
   ```
 
-The `ConseqExecutor` instance can also use a fully-customized `ExecutorService` to power its async operations, e.g.
-with a fixed sized platform-thread pool:
+The `ConseqExecutor` instance can also use a fully-customized (Virtual or Platform thread-based) `ExecutorService` to
+power its async operations, e.g. with a fixed sized platform-thread pool:
 
   ```jshelllanguage
   ConseqExecutor.instance(Executors.newFixedThreadPool(10))
