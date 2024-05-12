@@ -24,6 +24,9 @@
 
 package conseq4j.execute;
 
+import static coco4j.Tasks.callUnchecked;
+
+import coco4j.DefensiveFuture;
 import conseq4j.Terminable;
 import java.util.List;
 import java.util.Map;
@@ -89,14 +92,6 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         return new ConseqExecutor(workerExecutorService);
     }
 
-    private static <T> T call(Callable<T> task) {
-        try {
-            return task.call();
-        } catch (Exception e) {
-            throw new CompletionException(e);
-        }
-    }
-
     /**
      * @param command the command to run asynchronously in proper sequence
      * @param sequenceKey the key under which this task should be sequenced
@@ -144,17 +139,17 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
     @Override
     @SuppressWarnings("unchecked")
     public <T> @NonNull Future<T> submit(Callable<T> task, Object sequenceKey) {
-        CompletableFuture<?> latestTask = activeSequentialTasks.compute(
+        CompletableFuture<?> taskCompletable = activeSequentialTasks.compute(
                 sequenceKey,
                 (k, presentTask) -> (presentTask == null)
-                        ? CompletableFuture.supplyAsync(() -> call(task), workerExecutorService)
-                        : presentTask.handleAsync((r, e) -> call(task), workerExecutorService));
-        Future<?> copy = new ProtectiveFuture<>(latestTask);
-        latestTask.whenCompleteAsync(
+                        ? CompletableFuture.supplyAsync(() -> callUnchecked(task), workerExecutorService)
+                        : presentTask.handleAsync((r, e) -> callUnchecked(task), workerExecutorService));
+        CompletableFuture<?> copy = taskCompletable.copy();
+        taskCompletable.whenCompleteAsync(
                 (r, e) -> activeSequentialTasks.computeIfPresent(
                         sequenceKey, (k, checkedTask) -> checkedTask.isDone() ? null : checkedTask),
                 adminExecutorService);
-        return (ProtectiveFuture<T>) copy;
+        return (Future<T>) new DefensiveFuture<>(copy);
     }
 
     /** Orderly shutdown, and awaits thread pool termination. */
@@ -187,60 +182,5 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         List<Runnable> neverStartedTasks = workerExecutorService.shutdownNow();
         adminExecutorService.shutdownNow();
         return neverStartedTasks;
-    }
-
-    /**
-     * Protective copy of the wrapped {@link CompletableFuture} instance, so the client does not get to interact with
-     * internal thread resources
-     *
-     * @param <V> The value type held by the Future
-     */
-    public static final class ProtectiveFuture<V> implements Future<V> {
-        private final CompletableFuture<V> completableFuture;
-
-        private ProtectiveFuture(CompletableFuture<V> completableFuture) {
-            this.completableFuture = completableFuture;
-        }
-
-        @Override
-        public boolean cancel(boolean mayInterruptIfRunning) {
-            return this.completableFuture.cancel(mayInterruptIfRunning);
-        }
-
-        @Override
-        public boolean isCancelled() {
-            return this.completableFuture.isCancelled();
-        }
-
-        @Override
-        public boolean isDone() {
-            return this.completableFuture.isDone();
-        }
-
-        @Override
-        public V get() throws InterruptedException, ExecutionException {
-            return this.completableFuture.get();
-        }
-
-        @Override
-        public V get(long timeout, @NonNull TimeUnit unit)
-                throws InterruptedException, ExecutionException, TimeoutException {
-            return this.completableFuture.get(timeout, unit);
-        }
-
-        @Override
-        public V resultNow() {
-            return this.completableFuture.resultNow();
-        }
-
-        @Override
-        public Throwable exceptionNow() {
-            return this.completableFuture.exceptionNow();
-        }
-
-        @Override
-        public State state() {
-            return this.completableFuture.state();
-        }
     }
 }

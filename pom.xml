@@ -133,7 +133,7 @@
             <plugin>
                 <groupId>io.github.q3769</groupId>
                 <artifactId>semver-maven-plugin</artifactId>
-                <version>20221011.20230506.20230611</version>
+                <version>20240116.0.202402</version>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -186,6 +186,11 @@
             <artifactId>jsr305</artifactId>
             <version>3.0.2</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.q3769</groupId>
+            <artifactId>coco4j</artifactId>
+            <version>10.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
