@@ -141,13 +141,13 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
     public <T> @NonNull Future<T> submit(Callable<T> task, Object sequenceKey) {
         CompletableFuture<?> taskCompletable = activeSequentialTasks.compute(
                 sequenceKey,
-                (k, presentTask) -> (presentTask == null)
+                (k, vCompletable) -> (vCompletable == null)
                         ? CompletableFuture.supplyAsync(() -> callUnchecked(task), workerExecutorService)
-                        : presentTask.handleAsync((r, e) -> callUnchecked(task), workerExecutorService));
+                        : vCompletable.handleAsync((r, e) -> callUnchecked(task), workerExecutorService));
         CompletableFuture<?> copy = taskCompletable.copy();
         taskCompletable.whenCompleteAsync(
                 (r, e) -> activeSequentialTasks.computeIfPresent(
-                        sequenceKey, (k, checkedTask) -> checkedTask.isDone() ? null : checkedTask),
+                        sequenceKey, (k, vCompletable) -> vCompletable.isDone() ? null : vCompletable),
                 adminExecutorService);
         return (Future<T>) new DefensiveFuture<>(copy);
     }
