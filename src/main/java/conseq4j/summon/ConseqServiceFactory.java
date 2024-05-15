@@ -26,6 +26,7 @@ package conseq4j.summon;
 import static java.lang.Math.floorMod;
 import static org.awaitility.Awaitility.await;
 
+import coco4j.ThreadFactories;
 import conseq4j.Terminable;
 import java.time.Duration;
 import java.util.Collection;
@@ -93,7 +94,8 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
     public ExecutorService getExecutorService(Object sequenceKey) {
         return this.sequentialExecutors.computeIfAbsent(
                 bucketOf(sequenceKey),
-                bucket -> new ShutdownDisabledExecutorService(Executors.newSingleThreadExecutor()));
+                bucket -> new ShutdownDisabledExecutorService(Executors.newSingleThreadExecutor(
+                        ThreadFactories.newPlatformThreadFactory("sequential-executor"))));
     }
 
     /** Shuts down all executors and awaits termination to complete */
