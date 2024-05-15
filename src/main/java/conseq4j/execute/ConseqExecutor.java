@@ -93,17 +93,6 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
     }
 
     /**
-     * @param command the command to run asynchronously in proper sequence
-     * @param sequenceKey the key under which this task should be sequenced
-     * @return future result of the command, not downcast-able from the basic {@link Future} interface.
-     * @see ConseqExecutor#submit(Callable, Object)
-     */
-    @Override
-    public @NonNull Future<Void> execute(Runnable command, Object sequenceKey) {
-        return submit(Executors.callable(command, null), sequenceKey);
-    }
-
-    /**
      * Tasks of different sequence keys execute in parallel, pending thread availability from the backing
      * {@link #workerExecutorService}.
      *

@@ -25,6 +25,7 @@
 package conseq4j.execute;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
@@ -50,7 +51,9 @@ public interface SequentialExecutor {
      * @param sequenceKey the key under which all tasks are executed sequentially
      * @return future holding run status of the submitted command
      */
-    Future<Void> execute(Runnable command, Object sequenceKey);
+    default Future<Void> execute(Runnable command, Object sequenceKey) {
+        return submit(Executors.callable(command, null), sequenceKey);
+    }
 
     /**
      * Asynchronously executes specified task in sequence regulated by specified key
