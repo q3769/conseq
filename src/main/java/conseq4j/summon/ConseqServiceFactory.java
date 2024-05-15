@@ -25,6 +25,7 @@ package conseq4j.summon;
 
 import static java.lang.Math.floorMod;
 
+import coco4j.ThreadFactories;
 import conseq4j.Terminable;
 import java.util.Collection;
 import java.util.List;
@@ -82,7 +83,9 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
     @Override
     public ExecutorService getExecutorService(@NonNull Object sequenceKey) {
         return this.sequentialExecutors.computeIfAbsent(
-                bucketOf(sequenceKey), bucket -> new ShutdownDisabledExecutorService(Executors.newFixedThreadPool(1)));
+                bucketOf(sequenceKey),
+                bucket -> new ShutdownDisabledExecutorService(Executors.newSingleThreadExecutor(
+                        ThreadFactories.newPlatformThreadFactory("sequential-executor"))));
     }
 
     @Override
@@ -122,7 +125,8 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
     static final class ShutdownDisabledExecutorService implements ExecutorService {
 
         private static final String SHUTDOWN_UNSUPPORTED_MESSAGE =
-                "Shutdown not supported: Tasks being executed by this service may be from unrelated owners; shutdown features are disabled to prevent undesired task cancellation on other owners";
+                "Shutdown not supported: Tasks being executed by this service may be from unrelated owners; shutdown"
+                        + " features are disabled to prevent undesired task cancellation on other owners";
 
         @Delegate(excludes = ShutdownOperations.class)
         private final ExecutorService delegate;
