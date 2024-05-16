@@ -30,13 +30,7 @@ import coco4j.DefensiveFuture;
 import conseq4j.Terminable;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 import javax.annotation.Nonnull;
 import javax.annotation.concurrent.ThreadSafe;
 import lombok.NonNull;
@@ -91,17 +85,6 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
 
     private static ConditionFactory await() {
         return Awaitility.await().forever();
-    }
-
-    /**
-     * @param command the command to run asynchronously in proper sequence
-     * @param sequenceKey the key under which this task should be sequenced
-     * @return future result of the command, not downcast-able from the basic {@link Future} interface.
-     * @see ConseqExecutor#submit(Callable, Object)
-     */
-    @Override
-    public @NonNull Future<Void> execute(@NonNull Runnable command, @NonNull Object sequenceKey) {
-        return submit(Executors.callable(command, null), sequenceKey);
     }
 
     /**
