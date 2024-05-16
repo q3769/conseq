@@ -51,6 +51,7 @@ import org.awaitility.core.ConditionFactory;
 @ThreadSafe
 @ToString
 public final class ConseqServiceFactory implements SequentialExecutorServiceFactory, Terminable, AutoCloseable {
+    private static final int DEFAULT_CONCURRENCY = Runtime.getRuntime().availableProcessors();
     private final int concurrency;
     private final ConcurrentMap<Object, ShutdownDisabledExecutorService> sequentialExecutors;
 
@@ -72,7 +73,7 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
      * @return ExecutorService factory with default concurrency
      */
     public static @Nonnull ConseqServiceFactory instance() {
-        return instance(Runtime.getRuntime().availableProcessors());
+        return instance(DEFAULT_CONCURRENCY);
     }
 
     /**
