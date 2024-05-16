@@ -45,9 +45,8 @@ import lombok.ToString;
 @ToString
 public final class ConseqExecutor implements SequentialExecutor, Terminable, AutoCloseable {
     private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
-    private final ExecutorService adminExecutorService = Executors.newThreadPerTaskExecutor(Thread.ofVirtual()
-            .name(this.getClass().getName() + "-admin-thread-", 1)
-            .factory());
+    private final ExecutorService adminExecutorService = Executors.newThreadPerTaskExecutor(
+            Thread.ofVirtual().name("conseq-admin-", 1).factory());
     /**
      * The worker thread pool facilitates the overall async execution, independent of the submitted tasks. Any thread
      * from the pool can be used to execute any task, regardless of sequence keys. The pool capacity decides the overall
@@ -65,9 +64,8 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      * @return conseq executor
      */
     public static @Nonnull ConseqExecutor instance() {
-        return instance(Executors.newThreadPerTaskExecutor(Thread.ofVirtual()
-                .name(ConseqExecutor.class.getName() + "-worker-thread-", 1)
-                .factory()));
+        return instance(Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name("conseq-worker-", 1).factory()));
     }
 
     /**
