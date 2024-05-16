@@ -46,11 +46,11 @@ import org.awaitility.core.ConditionFactory;
 @ThreadSafe
 @ToString
 public final class ConseqExecutor implements SequentialExecutor, Terminable, AutoCloseable {
-
-    public static final int ADMIN_WORKER_PARALLELISM =
+    private static final int DEFAULT_WORKER_CONCURRENCY = Runtime.getRuntime().availableProcessors();
+    private static final int ADMIN_WORKER_CONCURRENCY =
             Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+    private final ExecutorService adminService = Executors.newWorkStealingPool(ADMIN_WORKER_CONCURRENCY);
     private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
-    private final ExecutorService adminService = Executors.newWorkStealingPool(ADMIN_WORKER_PARALLELISM);
     /**
      * The worker thread pool facilitates the overall async execution, independent of the submitted tasks. Any thread
      * from the pool can be used to execute any task, regardless of sequence keys. The pool capacity decides the overall
@@ -64,7 +64,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
 
     /** @return conseq executor with default concurrency */
     public static @Nonnull ConseqExecutor instance() {
-        return instance(Runtime.getRuntime().availableProcessors());
+        return instance(DEFAULT_WORKER_CONCURRENCY);
     }
 
     /**
