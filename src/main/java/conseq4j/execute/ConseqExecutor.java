@@ -27,6 +27,7 @@ package conseq4j.execute;
 import static coco4j.Tasks.callUnchecked;
 
 import coco4j.DefensiveFuture;
+import coco4j.ThreadFactories;
 import conseq4j.Terminable;
 import java.util.List;
 import java.util.Map;
@@ -47,9 +48,8 @@ import org.awaitility.core.ConditionFactory;
 @ToString
 public final class ConseqExecutor implements SequentialExecutor, Terminable, AutoCloseable {
     private static final int DEFAULT_WORKER_CONCURRENCY = Runtime.getRuntime().availableProcessors();
-    private static final int ADMIN_WORKER_CONCURRENCY =
-            Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
-    private final ExecutorService adminService = Executors.newWorkStealingPool(ADMIN_WORKER_CONCURRENCY);
+    private final ExecutorService adminService =
+            Executors.newCachedThreadPool(ThreadFactories.newPlatformThreadFactory("conseq4j-admin"));
     private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
     /**
      * The worker thread pool facilitates the overall async execution, independent of the submitted tasks. Any thread

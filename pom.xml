@@ -27,7 +27,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.q3769</groupId>
     <artifactId>conseq4j</artifactId>
-    <version>20230922.20230924.20240516</version>
+    <version>20230922.20230924.20240521</version>
     <packaging>jar</packaging>
     <name>conseq4j</name>
     <description>A Java concurrent API to sequence related tasks while concurring unrelated ones</description>
@@ -186,19 +186,19 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>
-            <version>5.9.3</version>
+            <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-params</artifactId>
-            <version>5.9.3</version>
+            <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
-            <version>5.9.3</version>
+            <version>5.10.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -221,7 +221,7 @@
         <dependency>
             <groupId>io.github.q3769</groupId>
             <artifactId>coco4j</artifactId>
-            <version>10.0.0</version>
+            <version>10.1.0</version>
         </dependency>
     </dependencies>
     <properties>
