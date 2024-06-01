@@ -31,24 +31,25 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.stream.IntStream;
+import lombok.NonNull;
 import org.awaitility.Awaitility;
 
 public class TestUtils {
 
     private TestUtils() {}
 
-    public static int actualExecutionThreadCount(List<SpyingTask> tasks) {
+    public static int actualExecutionThreadCount(@NonNull List<SpyingTask> tasks) {
         return (int) tasks.stream().map(SpyingTask::getRunThreadName).distinct().count();
     }
 
     public static long actualExecutionThreadCountIfAllCompleteNormal(List<Future<SpyingTask>> futures) {
-        return getIfAllCompleteNormal(futures).stream()
+        return getAllCompleteNormal(futures).stream()
                 .map(SpyingTask::getRunThreadName)
                 .distinct()
                 .count();
     }
 
-    public static void assertConsecutiveRuntimes(List<SpyingTask> tasks) {
+    public static void assertConsecutiveRuntimes(@NonNull List<SpyingTask> tasks) {
         for (int i = 0; i < tasks.size() - 1; i++) {
             SpyingTask current = tasks.get(i);
             SpyingTask next = tasks.get(i + 1);
@@ -73,7 +74,7 @@ public class TestUtils {
         return IntStream.range(0, taskCount).mapToObj(SpyingTask::new).collect(toList());
     }
 
-    public static <T> List<T> getIfAllCompleteNormal(List<Future<T>> futures) {
+    public static <T> List<T> getAllCompleteNormal(@NonNull List<Future<T>> futures) {
         return futures.stream()
                 .map(f -> {
                     try {
