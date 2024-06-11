@@ -43,8 +43,8 @@ import lombok.experimental.Delegate;
 import org.awaitility.core.ConditionFactory;
 
 /**
- * A factory to produce sequential executors of type {@link ExecutorService} with an upper-bound global execution
- * concurrency. Providing task execution concurrency, as well as sequencing, via the {@link ExecutorService} API.
+ * This class represents a factory for creating and managing a collection of ExecutorService instances. Each
+ * ExecutorService instance is used to execute tasks concurrently in separate threads.
  *
  * @author Qingtian Wang
  */
@@ -56,8 +56,9 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
     private final ConcurrentMap<Object, ShutdownDisabledExecutorService> sequentialExecutors;
 
     /**
-     * @param concurrency max count of "buckets"/executors, i.e. the max number of unrelated tasks that can be
-     *     concurrently executed at any given time by this conseq instance.
+     * Private constructor for the ConseqServiceFactory class.
+     *
+     * @param concurrency The maximum number of unrelated tasks that can be executed concurrently.
      */
     private ConseqServiceFactory(int concurrency) {
         if (concurrency <= 0) {
@@ -68,19 +69,19 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
     }
 
     /**
-     * Default static factory method uses available processor count as max task concurrency.
+     * Factory method to create an instance of ConseqServiceFactory with default concurrency.
      *
-     * @return ExecutorService factory with default concurrency
+     * @return An instance of ConseqServiceFactory.
      */
     public static @Nonnull ConseqServiceFactory instance() {
         return instance(DEFAULT_CONCURRENCY);
     }
 
     /**
-     * Static factory method taking specified task concurrency
+     * Factory method to create an instance of ConseqServiceFactory with specified concurrency.
      *
-     * @param concurrency max number of tasks possible to be executed in parallel
-     * @return ExecutorService factory with given concurrency
+     * @param concurrency The maximum number of tasks that can be executed in parallel.
+     * @return An instance of ConseqServiceFactory.
      */
     public static @Nonnull ConseqServiceFactory instance(int concurrency) {
         return new ConseqServiceFactory(concurrency);
@@ -90,7 +91,13 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
         return await().forever().pollDelay(Duration.ofMillis(10));
     }
 
-    /** @return a single-thread executor that does not support any shutdown action. */
+    /**
+     * Method to get an ExecutorService for a given sequence key. If an ExecutorService for the sequence key does not
+     * exist, it creates a new one.
+     *
+     * @param sequenceKey The key for the sequence of tasks to be executed.
+     * @return a single-thread executor that does not support any shutdown action.
+     */
     @Override
     public ExecutorService getExecutorService(Object sequenceKey) {
         return this.sequentialExecutors.computeIfAbsent(
@@ -99,7 +106,7 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
                         ThreadFactories.newPlatformThreadFactory("sequential-executor"))));
     }
 
-    /** Shuts down all executors and awaits termination to complete */
+    /** Method to shut down all ExecutorService instances and wait for them to terminate. */
     @Override
     public void close() {
         sequentialExecutors.values().forEach(ShutdownDisabledExecutorService::shutdownDelegate);
@@ -110,16 +117,27 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
         return floorMod(Objects.hash(sequenceKey), this.concurrency);
     }
 
+    /** Method to terminate all ExecutorService instances. */
     @Override
     public void terminate() {
         sequentialExecutors.values().parallelStream().forEach(ShutdownDisabledExecutorService::shutdownDelegate);
     }
 
+    /**
+     * Method to check if all ExecutorService instances are terminated.
+     *
+     * @return True if all ExecutorService instances are terminated, false otherwise.
+     */
     @Override
     public boolean isTerminated() {
         return sequentialExecutors.values().stream().allMatch(ExecutorService::isTerminated);
     }
 
+    /**
+     * Method to terminate all ExecutorService instances immediately.
+     *
+     * @return A list of tasks that never commenced execution.
+     */
     @Override
     public List<Runnable> terminateNow() {
         return sequentialExecutors.values().parallelStream()
@@ -143,7 +161,11 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
         @Delegate(excludes = ShutdownOperations.class)
         private final ExecutorService delegate;
 
-        /** @param delegate the delegate {@link ExecutorService} to run the submitted task(s). */
+        /**
+         * Constructor for the ShutdownDisabledExecutorService class.
+         *
+         * @param delegate The delegate ExecutorService to run the submitted tasks.
+         */
         public ShutdownDisabledExecutorService(ExecutorService delegate) {
             this.delegate = delegate;
         }
@@ -164,10 +186,16 @@ public final class ConseqServiceFactory implements SequentialExecutorServiceFact
             throw new UnsupportedOperationException(SHUTDOWN_UNSUPPORTED_MESSAGE);
         }
 
+        /** Method to shut down the delegate ExecutorService. */
         void shutdownDelegate() {
             this.delegate.shutdown();
         }
 
+        /**
+         * Method to shut down the delegate ExecutorService immediately.
+         *
+         * @return A list of tasks that never commenced execution.
+         */
         @Nonnull
         List<Runnable> shutdownDelegateNow() {
             return this.delegate.shutdownNow();

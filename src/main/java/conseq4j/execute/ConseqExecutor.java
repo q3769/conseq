@@ -44,9 +44,19 @@ import lombok.ToString;
 @ThreadSafe
 @ToString
 public final class ConseqExecutor implements SequentialExecutor, Terminable, AutoCloseable {
+    /**
+     * A concurrent hash map that stores the active sequential tasks, where the key is the sequence key, and the value
+     * is a CompletableFuture representing the currently executing task for that sequence key.
+     */
     private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
+
+    /**
+     * An ExecutorService used for administrative tasks, such as cleaning up completed tasks from the
+     * activeSequentialTasks map.
+     */
     private final ExecutorService adminExecutorService = Executors.newThreadPerTaskExecutor(
             Thread.ofVirtual().name("conseq-admin-", 1).factory());
+
     /**
      * The worker thread pool facilitates the overall async execution, independent of the submitted tasks. Any thread
      * from the pool can be used to execute any task, regardless of sequence keys. The pool capacity decides the overall
@@ -54,6 +64,12 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
      */
     private final ExecutorService workerExecutorService;
 
+    /**
+     * Private constructor that initializes the workerExecutorService.
+     *
+     * @param workerExecutorService The ExecutorService used for executing the actual tasks submitted to the
+     *     ConseqExecutor.
+     */
     private ConseqExecutor(ExecutorService workerExecutorService) {
         this.workerExecutorService = workerExecutorService;
     }
@@ -146,10 +162,16 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
         adminExecutorService.close();
     }
 
+    /**
+     * Checks if there are no tasks pending execution.
+     *
+     * @return true if there are no pending tasks, false otherwise.
+     */
     boolean noTaskPending() {
         return activeSequentialTasks.isEmpty();
     }
 
+    /** Initiates an orderly shutdown of the workerExecutorService and adminExecutorService. */
     @Override
     public void terminate() {
         new Thread(() -> {
@@ -159,11 +181,21 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
                 .start();
     }
 
+    /**
+     * Checks if both the workerExecutorService and adminExecutorService have terminated.
+     *
+     * @return true if both services have terminated, false otherwise.
+     */
     @Override
     public boolean isTerminated() {
         return workerExecutorService.isTerminated() && adminExecutorService.isTerminated();
     }
 
+    /**
+     * Attempts to stop all actively executing tasks and returns a list of tasks that never commenced execution.
+     *
+     * @return a list of tasks that never commenced execution.
+     */
     @Override
     public @Nonnull List<Runnable> terminateNow() {
         List<Runnable> neverStartedTasks = workerExecutorService.shutdownNow();
