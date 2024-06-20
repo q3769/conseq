@@ -170,7 +170,8 @@
                     <java>
                         <palantirJavaFormat>
                             <version>2.47.0</version>
-                            <style>PALANTIR</style>
+                            <style>GOOGLE</style>
+                            <!--                            <style>PALANTIR</style>-->
                             <formatJavadoc>true</formatJavadoc>
                         </palantirJavaFormat>
                         <removeUnusedImports/>

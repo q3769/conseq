@@ -44,142 +44,143 @@ import org.junit.jupiter.api.Test;
 
 /** @author Qingtian Wang */
 class ConseqServiceFactoryTest {
-    private static final int TASK_COUNT = 100;
+  private static final int TASK_COUNT = 100;
 
-    private static List<Callable<SpyingTask>> toCallables(@NonNull List<SpyingTask> tasks) {
-        return tasks.stream().map(SpyingTask::toCallable).collect(Collectors.toList());
+  private static List<Callable<SpyingTask>> toCallables(@NonNull List<SpyingTask> tasks) {
+    return tasks.stream().map(SpyingTask::toCallable).collect(Collectors.toList());
+  }
+
+  void assertSingleThread(@NonNull List<SpyingTask> tasks) {
+    List<String> distinctThreads =
+        tasks.stream().map(SpyingTask::getRunThreadName).distinct().toList();
+    assertEquals(1, distinctThreads.size());
+  }
+
+  @Test
+  void concurrencyBoundedByTotalTaskCount() {
+    List<Future<SpyingTask>> futures;
+    try (ConseqServiceFactory withHigherConcurrencyThanTaskCount =
+        ConseqServiceFactory.instance(TASK_COUNT * 2)) {
+
+      futures = createSpyingTasks(TASK_COUNT).stream()
+          .map(task -> withHigherConcurrencyThanTaskCount
+              .getExecutorService(UUID.randomUUID())
+              .submit(task.toCallable()))
+          .collect(toList());
     }
 
-    void assertSingleThread(@NonNull List<SpyingTask> tasks) {
-        List<String> distinctThreads =
-                tasks.stream().map(SpyingTask::getRunThreadName).distinct().toList();
-        assertEquals(1, distinctThreads.size());
+    final long totalRunThreads = getAllCompleteNormal(futures).stream()
+        .map(SpyingTask::getRunThreadName)
+        .distinct()
+        .count();
+    assertTrue(totalRunThreads <= TASK_COUNT);
+  }
+
+  @Test
+  void higherConcurrencyRendersBetterThroughput() {
+    List<SpyingTask> sameTasks = createSpyingTasks(TASK_COUNT);
+    int lowConcurrency = 2;
+    int highConcurrency = lowConcurrency * 10;
+
+    long lowConcurrencyStart;
+    List<Future<SpyingTask>> lowConcurrencyFutures;
+    try (ConseqServiceFactory withLowConcurrency = ConseqServiceFactory.instance(lowConcurrency)) {
+      lowConcurrencyStart = System.nanoTime();
+      lowConcurrencyFutures = sameTasks.stream()
+          .map(t -> withLowConcurrency.getExecutorService(UUID.randomUUID()).submit(t.toCallable()))
+          .collect(toList());
+    }
+    TestUtils.awaitFutures(lowConcurrencyFutures);
+    long lowConcurrencyTime = System.nanoTime() - lowConcurrencyStart;
+
+    long highConcurrencyStart;
+    List<Future<SpyingTask>> highConcurrencyFutures;
+    try (ConseqServiceFactory withHighConcurrency =
+        ConseqServiceFactory.instance(highConcurrency)) {
+      highConcurrencyStart = System.nanoTime();
+      highConcurrencyFutures = sameTasks.stream()
+          .map(task ->
+              withHighConcurrency.getExecutorService(UUID.randomUUID()).submit(task.toCallable()))
+          .collect(toList());
+    }
+    TestUtils.awaitFutures(highConcurrencyFutures);
+    long highConcurrencyTime = System.nanoTime() - highConcurrencyStart;
+
+    assertTrue(lowConcurrencyTime > highConcurrencyTime);
+  }
+
+  @Test
+  void invokeAllRunsTasksOfSameSequenceKeyInSequence() throws InterruptedException {
+    final List<Future<SpyingTask>> completedFutures;
+    try (ConseqServiceFactory defaultConseqServiceFactory = ConseqServiceFactory.instance()) {
+      List<SpyingTask> tasks = createSpyingTasks(TASK_COUNT);
+      UUID sameSequenceKey = UUID.randomUUID();
+
+      completedFutures = defaultConseqServiceFactory
+          .getExecutorService(sameSequenceKey)
+          .invokeAll(toCallables(tasks));
     }
 
+    final List<SpyingTask> doneTasks = getAllCompleteNormal(completedFutures);
+    assertSingleThread(doneTasks);
+  }
+
+  @Test
+  void invokeAnyChoosesTaskInSequenceRange() throws InterruptedException, ExecutionException {
+    ConseqServiceFactory defaultConseqServiceFactory = ConseqServiceFactory.instance();
+    List<SpyingTask> tasks = createSpyingTasks(TASK_COUNT);
+    UUID sameSequenceKey = UUID.randomUUID();
+
+    SpyingTask doneTask = defaultConseqServiceFactory
+        .getExecutorService(sameSequenceKey)
+        .invokeAny(toCallables(tasks));
+
+    final Integer scheduledSequenceIndex = doneTask.getScheduledSequenceIndex();
+    assertTrue(Range.closedOpen(0, TASK_COUNT).contains(scheduledSequenceIndex));
+  }
+
+  @Test
+  void submitsRunAllTasksOfSameSequenceKeyInSequence() {
+    List<SpyingTask> tasks;
+    try (ConseqServiceFactory defaultConseqServiceFactory = ConseqServiceFactory.instance()) {
+      tasks = createSpyingTasks(TASK_COUNT);
+      UUID sameSequenceKey = UUID.randomUUID();
+
+      tasks.forEach(task ->
+          defaultConseqServiceFactory.getExecutorService(sameSequenceKey).execute(task));
+    }
+
+    TestUtils.awaitAllComplete(tasks);
+    assertSingleThread(tasks);
+  }
+
+  @Nested
+  class individualShutdownUnsupported {
     @Test
-    void concurrencyBoundedByTotalTaskCount() {
-        List<Future<SpyingTask>> futures;
-        try (ConseqServiceFactory withHigherConcurrencyThanTaskCount = ConseqServiceFactory.instance(TASK_COUNT * 2)) {
-
-            futures = createSpyingTasks(TASK_COUNT).stream()
-                    .map(task -> withHigherConcurrencyThanTaskCount
-                            .getExecutorService(UUID.randomUUID())
-                            .submit(task.toCallable()))
-                    .collect(toList());
-        }
-
-        final long totalRunThreads = getAllCompleteNormal(futures).stream()
-                .map(SpyingTask::getRunThreadName)
-                .distinct()
-                .count();
-        assertTrue(totalRunThreads <= TASK_COUNT);
+    void whenShutdownsCalled() {
+      try (ConseqServiceFactory conseqServiceFactory = ConseqServiceFactory.instance()) {
+        ExecutorService sequentialExecutor =
+            conseqServiceFactory.getExecutorService(UUID.randomUUID());
+        assertThrows(UnsupportedOperationException.class, sequentialExecutor::shutdown);
+        assertThrows(UnsupportedOperationException.class, sequentialExecutor::shutdownNow);
+        assertFalse(sequentialExecutor.isShutdown());
+        assertFalse(sequentialExecutor.isTerminated());
+      }
     }
+  }
 
+  @Nested
+  class factoryClose {
     @Test
-    void higherConcurrencyRendersBetterThroughput() {
-        List<SpyingTask> sameTasks = createSpyingTasks(TASK_COUNT);
-        int lowConcurrency = 2;
-        int highConcurrency = lowConcurrency * 10;
+    void whenCloseCalled() {
+      ConseqServiceFactory conseqServiceFactory = ConseqServiceFactory.instance();
+      ExecutorService sequentialExecutor =
+          conseqServiceFactory.getExecutorService(UUID.randomUUID());
 
-        long lowConcurrencyStart;
-        List<Future<SpyingTask>> lowConcurrencyFutures;
-        try (ConseqServiceFactory withLowConcurrency = ConseqServiceFactory.instance(lowConcurrency)) {
-            lowConcurrencyStart = System.nanoTime();
-            lowConcurrencyFutures = sameTasks.stream()
-                    .map(t -> withLowConcurrency
-                            .getExecutorService(UUID.randomUUID())
-                            .submit(t.toCallable()))
-                    .collect(toList());
-        }
-        TestUtils.awaitFutures(lowConcurrencyFutures);
-        long lowConcurrencyTime = System.nanoTime() - lowConcurrencyStart;
+      conseqServiceFactory.close();
 
-        long highConcurrencyStart;
-        List<Future<SpyingTask>> highConcurrencyFutures;
-        try (ConseqServiceFactory withHighConcurrency = ConseqServiceFactory.instance(highConcurrency)) {
-            highConcurrencyStart = System.nanoTime();
-            highConcurrencyFutures = sameTasks.stream()
-                    .map(task -> withHighConcurrency
-                            .getExecutorService(UUID.randomUUID())
-                            .submit(task.toCallable()))
-                    .collect(toList());
-        }
-        TestUtils.awaitFutures(highConcurrencyFutures);
-        long highConcurrencyTime = System.nanoTime() - highConcurrencyStart;
-
-        assertTrue(lowConcurrencyTime > highConcurrencyTime);
+      assertTrue(sequentialExecutor.isShutdown());
+      assertTrue(sequentialExecutor.isTerminated());
     }
-
-    @Test
-    void invokeAllRunsTasksOfSameSequenceKeyInSequence() throws InterruptedException {
-        final List<Future<SpyingTask>> completedFutures;
-        try (ConseqServiceFactory defaultConseqServiceFactory = ConseqServiceFactory.instance()) {
-            List<SpyingTask> tasks = createSpyingTasks(TASK_COUNT);
-            UUID sameSequenceKey = UUID.randomUUID();
-
-            completedFutures = defaultConseqServiceFactory
-                    .getExecutorService(sameSequenceKey)
-                    .invokeAll(toCallables(tasks));
-        }
-
-        final List<SpyingTask> doneTasks = getAllCompleteNormal(completedFutures);
-        assertSingleThread(doneTasks);
-    }
-
-    @Test
-    void invokeAnyChoosesTaskInSequenceRange() throws InterruptedException, ExecutionException {
-        ConseqServiceFactory defaultConseqServiceFactory = ConseqServiceFactory.instance();
-        List<SpyingTask> tasks = createSpyingTasks(TASK_COUNT);
-        UUID sameSequenceKey = UUID.randomUUID();
-
-        SpyingTask doneTask =
-                defaultConseqServiceFactory.getExecutorService(sameSequenceKey).invokeAny(toCallables(tasks));
-
-        final Integer scheduledSequenceIndex = doneTask.getScheduledSequenceIndex();
-        assertTrue(Range.closedOpen(0, TASK_COUNT).contains(scheduledSequenceIndex));
-    }
-
-    @Test
-    void submitsRunAllTasksOfSameSequenceKeyInSequence() {
-        List<SpyingTask> tasks;
-        try (ConseqServiceFactory defaultConseqServiceFactory = ConseqServiceFactory.instance()) {
-            tasks = createSpyingTasks(TASK_COUNT);
-            UUID sameSequenceKey = UUID.randomUUID();
-
-            tasks.forEach(task -> defaultConseqServiceFactory
-                    .getExecutorService(sameSequenceKey)
-                    .execute(task));
-        }
-
-        TestUtils.awaitAllComplete(tasks);
-        assertSingleThread(tasks);
-    }
-
-    @Nested
-    class individualShutdownUnsupported {
-        @Test
-        void whenShutdownsCalled() {
-            try (ConseqServiceFactory conseqServiceFactory = ConseqServiceFactory.instance()) {
-                ExecutorService sequentialExecutor = conseqServiceFactory.getExecutorService(UUID.randomUUID());
-                assertThrows(UnsupportedOperationException.class, sequentialExecutor::shutdown);
-                assertThrows(UnsupportedOperationException.class, sequentialExecutor::shutdownNow);
-                assertFalse(sequentialExecutor.isShutdown());
-                assertFalse(sequentialExecutor.isTerminated());
-            }
-        }
-    }
-
-    @Nested
-    class factoryClose {
-        @Test
-        void whenCloseCalled() {
-            ConseqServiceFactory conseqServiceFactory = ConseqServiceFactory.instance();
-            ExecutorService sequentialExecutor = conseqServiceFactory.getExecutorService(UUID.randomUUID());
-
-            conseqServiceFactory.close();
-
-            assertTrue(sequentialExecutor.isShutdown());
-            assertTrue(sequentialExecutor.isTerminated());
-        }
-    }
+  }
 }

@@ -34,34 +34,34 @@ import org.junit.jupiter.api.Test;
 /** @author q3769 */
 class ConfigTest {
 
-    @Test
-    @SuppressWarnings("resource")
-    void errorOnNonPositiveConcurrency() {
-        assertThrows(IllegalArgumentException.class, () -> ConseqServiceFactory.instance(0));
-        assertThrows(IllegalArgumentException.class, () -> ConseqServiceFactory.instance(-999));
+  @Test
+  @SuppressWarnings("resource")
+  void errorOnNonPositiveConcurrency() {
+    assertThrows(IllegalArgumentException.class, () -> ConseqServiceFactory.instance(0));
+    assertThrows(IllegalArgumentException.class, () -> ConseqServiceFactory.instance(-999));
+  }
+
+  @Test
+  void shouldReturnSameExecutorOnSameName() {
+    try (ConseqServiceFactory sut = ConseqServiceFactory.instance()) {
+      UUID sameSequenceKey = UUID.randomUUID();
+      Executor executorService = sut.getExecutorService(sameSequenceKey);
+
+      int additionalSummonTimes = 1 + new Random().nextInt(100);
+      for (int i = 0; i < additionalSummonTimes; i++) {
+        assertSame(executorService, sut.getExecutorService(sameSequenceKey));
+      }
+    }
+  }
+
+  @Test
+  void shutdownUnsupported() {
+    final ExecutorService sequentialExecutor;
+    try (ConseqServiceFactory target = ConseqServiceFactory.instance()) {
+      sequentialExecutor = target.getExecutorService("testSequenceKey");
     }
 
-    @Test
-    void shouldReturnSameExecutorOnSameName() {
-        try (ConseqServiceFactory sut = ConseqServiceFactory.instance()) {
-            UUID sameSequenceKey = UUID.randomUUID();
-            Executor executorService = sut.getExecutorService(sameSequenceKey);
-
-            int additionalSummonTimes = 1 + new Random().nextInt(100);
-            for (int i = 0; i < additionalSummonTimes; i++) {
-                assertSame(executorService, sut.getExecutorService(sameSequenceKey));
-            }
-        }
-    }
-
-    @Test
-    void shutdownUnsupported() {
-        final ExecutorService sequentialExecutor;
-        try (ConseqServiceFactory target = ConseqServiceFactory.instance()) {
-            sequentialExecutor = target.getExecutorService("testSequenceKey");
-        }
-
-        assertThrows(UnsupportedOperationException.class, sequentialExecutor::shutdown);
-        assertThrows(UnsupportedOperationException.class, sequentialExecutor::shutdownNow);
-    }
+    assertThrows(UnsupportedOperationException.class, sequentialExecutor::shutdown);
+    assertThrows(UnsupportedOperationException.class, sequentialExecutor::shutdownNow);
+  }
 }

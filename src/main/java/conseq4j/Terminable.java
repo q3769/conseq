@@ -28,31 +28,32 @@ import java.util.List;
 
 /** Direct shutdown operations */
 public interface Terminable {
-    /**
-     * Initiates an orderly terminate of all managed thread resources. Previously submitted tasks are executed, but no
-     * new tasks will be accepted. Invocation has no additional effect if already terminated.
-     *
-     * <p>This method does not wait for the previously submitted tasks to complete execution. Use an external awaiting
-     * mechanism to do that, with the help of {@link #isTerminated()}.
-     */
-    void terminate();
+  /**
+   * Initiates an orderly terminate of all managed thread resources. Previously submitted tasks are
+   * executed, but no new tasks will be accepted. Invocation has no additional effect if already
+   * terminated.
+   *
+   * <p>This method does not wait for the previously submitted tasks to complete execution. Use an
+   * external awaiting mechanism to do that, with the help of {@link #isTerminated()}.
+   */
+  void terminate();
 
-    /**
-     * Non-blocking
-     *
-     * @return true if all tasks of all managed executors have completed following shut down. Note that isTerminated is
-     *     never true unless terminate was called first.
-     */
-    boolean isTerminated();
+  /**
+   * Non-blocking
+   *
+   * @return true if all tasks of all managed executors have completed following shut down. Note
+   *     that isTerminated is never true unless terminate was called first.
+   */
+  boolean isTerminated();
 
-    /**
-     * Attempts to terminate all actively executing tasks, halts the processing of waiting tasks, and returns a list of
-     * the tasks that were awaiting execution.
-     *
-     * <p>This method does not wait for the previously submitted tasks to complete execution. Use an external awaiting
-     * mechanism to do that, with the help of {@link #isTerminated()}.
-     *
-     * @return Tasks submitted but never started executing
-     */
-    List<Runnable> terminateNow();
+  /**
+   * Attempts to terminate all actively executing tasks, halts the processing of waiting tasks, and
+   * returns a list of the tasks that were awaiting execution.
+   *
+   * <p>This method does not wait for the previously submitted tasks to complete execution. Use an
+   * external awaiting mechanism to do that, with the help of {@link #isTerminated()}.
+   *
+   * @return Tasks submitted but never started executing
+   */
+  List<Runnable> terminateNow();
 }

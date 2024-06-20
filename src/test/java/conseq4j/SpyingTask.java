@@ -36,46 +36,48 @@ import lombok.ToString;
 @ToString
 @Getter
 public class SpyingTask implements Runnable {
-    private static final int MAX_RUN_TIME_MILLIS = 20;
-    private static final Random RANDOM = new Random();
-    private static final long UNSET_TIME_STAMP = Long.MIN_VALUE;
-    final Integer scheduledSequenceIndex;
-    final long targetRunDurationMillis;
-    String runThreadName;
-    volatile long runTimeEndMillis = UNSET_TIME_STAMP;
-    volatile long runTimeStartMillis = UNSET_TIME_STAMP;
+  private static final int MAX_RUN_TIME_MILLIS = 20;
+  private static final Random RANDOM = new Random();
+  private static final long UNSET_TIME_STAMP = Long.MIN_VALUE;
+  final Integer scheduledSequenceIndex;
+  final long targetRunDurationMillis;
+  String runThreadName;
+  volatile long runTimeEndMillis = UNSET_TIME_STAMP;
+  volatile long runTimeStartMillis = UNSET_TIME_STAMP;
 
-    public SpyingTask(Integer scheduledSequenceIndex) {
-        this.scheduledSequenceIndex = scheduledSequenceIndex;
-        this.targetRunDurationMillis = randomIntInclusive();
-    }
+  public SpyingTask(Integer scheduledSequenceIndex) {
+    this.scheduledSequenceIndex = scheduledSequenceIndex;
+    this.targetRunDurationMillis = randomIntInclusive();
+  }
 
-    private static int randomIntInclusive() {
-        return 1 + RANDOM.nextInt(SpyingTask.MAX_RUN_TIME_MILLIS);
-    }
+  private static int randomIntInclusive() {
+    return 1 + RANDOM.nextInt(SpyingTask.MAX_RUN_TIME_MILLIS);
+  }
 
-    public Duration getActualRunDuration() {
-        if (!isDone()) {
-            throw new IllegalStateException("actual run duration not available until run completes");
-        }
-        return Duration.ofMillis(this.runTimeEndMillis - this.runTimeStartMillis);
+  public Duration getActualRunDuration() {
+    if (!isDone()) {
+      throw new IllegalStateException("actual run duration not available until run completes");
     }
+    return Duration.ofMillis(this.runTimeEndMillis - this.runTimeStartMillis);
+  }
 
-    public boolean isDone() {
-        return this.runTimeStartMillis != UNSET_TIME_STAMP && this.runTimeEndMillis != UNSET_TIME_STAMP;
-    }
+  public boolean isDone() {
+    return this.runTimeStartMillis != UNSET_TIME_STAMP && this.runTimeEndMillis != UNSET_TIME_STAMP;
+  }
 
-    @Override
-    public void run() {
-        this.runTimeStartMillis = System.currentTimeMillis();
-        this.runThreadName = Thread.currentThread().getName();
-        await().with()
-                .pollInterval(Duration.ofMillis(1))
-                .until(() -> (System.currentTimeMillis() - this.runTimeStartMillis) >= this.targetRunDurationMillis);
-        this.runTimeEndMillis = System.currentTimeMillis();
-    }
+  @Override
+  public void run() {
+    this.runTimeStartMillis = System.currentTimeMillis();
+    this.runThreadName = Thread.currentThread().getName();
+    await()
+        .with()
+        .pollInterval(Duration.ofMillis(1))
+        .until(() ->
+            (System.currentTimeMillis() - this.runTimeStartMillis) >= this.targetRunDurationMillis);
+    this.runTimeEndMillis = System.currentTimeMillis();
+  }
 
-    public Callable<SpyingTask> toCallable() {
-        return Executors.callable(this, this);
-    }
+  public Callable<SpyingTask> toCallable() {
+    return Executors.callable(this, this);
+  }
 }

@@ -36,70 +36,71 @@ import org.awaitility.Awaitility;
 
 public class TestUtils {
 
-    private TestUtils() {}
+  private TestUtils() {}
 
-    public static int actualExecutionThreadCount(@NonNull List<SpyingTask> tasks) {
-        return (int) tasks.stream().map(SpyingTask::getRunThreadName).distinct().count();
-    }
+  public static int actualExecutionThreadCount(@NonNull List<SpyingTask> tasks) {
+    return (int) tasks.stream().map(SpyingTask::getRunThreadName).distinct().count();
+  }
 
-    public static long actualExecutionThreadCountIfAllCompleteNormal(List<Future<SpyingTask>> futures) {
-        return getAllCompleteNormal(futures).stream()
-                .map(SpyingTask::getRunThreadName)
-                .distinct()
-                .count();
-    }
+  public static long actualExecutionThreadCountIfAllCompleteNormal(
+      List<Future<SpyingTask>> futures) {
+    return getAllCompleteNormal(futures).stream()
+        .map(SpyingTask::getRunThreadName)
+        .distinct()
+        .count();
+  }
 
-    public static void assertConsecutiveRuntimes(@NonNull List<SpyingTask> tasks) {
-        for (int i = 0; i < tasks.size() - 1; i++) {
-            SpyingTask current = tasks.get(i);
-            SpyingTask next = tasks.get(i + 1);
-            assertTrue(current.getRunTimeEndMillis() <= next.getRunTimeStartMillis());
-        }
+  public static void assertConsecutiveRuntimes(@NonNull List<SpyingTask> tasks) {
+    for (int i = 0; i < tasks.size() - 1; i++) {
+      SpyingTask current = tasks.get(i);
+      SpyingTask next = tasks.get(i + 1);
+      assertTrue(current.getRunTimeEndMillis() <= next.getRunTimeStartMillis());
     }
+  }
 
-    public static void awaitAllComplete(List<SpyingTask> tasks) {
-        Awaitility.await().until(() -> tasks.parallelStream().allMatch(SpyingTask::isDone));
-    }
+  public static void awaitAllComplete(List<SpyingTask> tasks) {
+    Awaitility.await().until(() -> tasks.parallelStream().allMatch(SpyingTask::isDone));
+  }
 
-    public static <T> void awaitFutures(List<Future<T>> futures) {
-        Awaitility.await().until(() -> futures.parallelStream().allMatch(Future::isDone));
-    }
+  public static <T> void awaitFutures(List<Future<T>> futures) {
+    Awaitility.await().until(() -> futures.parallelStream().allMatch(Future::isDone));
+  }
 
-    public static <T> int cancellationCount(List<Future<T>> futures) {
-        awaitFutures(futures);
-        return futures.parallelStream().mapToInt(f -> f.isCancelled() ? 1 : 0).sum();
-    }
+  public static <T> int cancellationCount(List<Future<T>> futures) {
+    awaitFutures(futures);
+    return futures.parallelStream().mapToInt(f -> f.isCancelled() ? 1 : 0).sum();
+  }
 
-    public static List<SpyingTask> createSpyingTasks(int taskCount) {
-        return IntStream.range(0, taskCount).mapToObj(SpyingTask::new).collect(toList());
-    }
+  public static List<SpyingTask> createSpyingTasks(int taskCount) {
+    return IntStream.range(0, taskCount).mapToObj(SpyingTask::new).collect(toList());
+  }
 
-    public static <T> List<T> getAllCompleteNormal(@NonNull List<Future<T>> futures) {
-        return futures.stream()
-                .map(f -> {
-                    try {
-                        return f.get();
-                    } catch (InterruptedException | ExecutionException ex) {
-                        throw new IllegalStateException(ex);
-                    }
-                })
-                .collect(toList());
-    }
+  public static <T> List<T> getAllCompleteNormal(@NonNull List<Future<T>> futures) {
+    return futures.stream()
+        .map(f -> {
+          try {
+            return f.get();
+          } catch (InterruptedException | ExecutionException ex) {
+            throw new IllegalStateException(ex);
+          }
+        })
+        .collect(toList());
+  }
 
-    public static <T> int normalCompletionCount(List<Future<T>> resultFutures) {
-        awaitFutures(resultFutures);
-        int normalCompletionCount = 0;
-        for (Future<T> future : resultFutures) {
-            if (future.isCancelled()) {
-                continue;
-            }
-            try {
-                future.get();
-            } catch (InterruptedException | ExecutionException e) {
-                continue;
-            }
-            normalCompletionCount++;
-        }
-        return normalCompletionCount;
+  public static <T> int normalCompletionCount(List<Future<T>> resultFutures) {
+    awaitFutures(resultFutures);
+    int normalCompletionCount = 0;
+    for (Future<T> future : resultFutures) {
+      if (future.isCancelled()) {
+        continue;
+      }
+      try {
+        future.get();
+      } catch (InterruptedException | ExecutionException e) {
+        continue;
+      }
+      normalCompletionCount++;
     }
+    return normalCompletionCount;
+  }
 }

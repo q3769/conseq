@@ -43,171 +43,175 @@ import lombok.experimental.Delegate;
 import org.awaitility.core.ConditionFactory;
 
 /**
- * This class represents a factory for creating and managing a collection of ExecutorService instances. Each
- * ExecutorService instance is used to execute tasks concurrently in separate threads.
+ * This class represents a factory for creating and managing a collection of ExecutorService
+ * instances. Each ExecutorService instance is used to execute tasks concurrently in separate
+ * threads.
  *
  * @author Qingtian Wang
  */
 @ThreadSafe
 @ToString
-public final class ConseqServiceFactory implements SequentialExecutorServiceFactory, Terminable, AutoCloseable {
-    private static final int DEFAULT_CONCURRENCY = Runtime.getRuntime().availableProcessors();
-    private final int concurrency;
-    private final ConcurrentMap<Object, ShutdownDisabledExecutorService> sequentialExecutors;
+public final class ConseqServiceFactory
+    implements SequentialExecutorServiceFactory, Terminable, AutoCloseable {
+  private static final int DEFAULT_CONCURRENCY = Runtime.getRuntime().availableProcessors();
+  private final int concurrency;
+  private final ConcurrentMap<Object, ShutdownDisabledExecutorService> sequentialExecutors;
+
+  /**
+   * Private constructor for the ConseqServiceFactory class.
+   *
+   * @param concurrency The maximum number of unrelated tasks that can be executed concurrently.
+   */
+  private ConseqServiceFactory(int concurrency) {
+    if (concurrency <= 0) {
+      throw new IllegalArgumentException(
+          "expecting positive concurrency, but given: " + concurrency);
+    }
+    this.concurrency = concurrency;
+    this.sequentialExecutors = new ConcurrentHashMap<>(concurrency);
+  }
+
+  /**
+   * Factory method to create an instance of ConseqServiceFactory with default concurrency.
+   *
+   * @return An instance of ConseqServiceFactory.
+   */
+  public static @Nonnull ConseqServiceFactory instance() {
+    return instance(DEFAULT_CONCURRENCY);
+  }
+
+  /**
+   * Factory method to create an instance of ConseqServiceFactory with specified concurrency.
+   *
+   * @param concurrency The maximum number of tasks that can be executed in parallel.
+   * @return An instance of ConseqServiceFactory.
+   */
+  public static @Nonnull ConseqServiceFactory instance(int concurrency) {
+    return new ConseqServiceFactory(concurrency);
+  }
+
+  private static ConditionFactory awaitForever() {
+    return await().forever().pollDelay(Duration.ofMillis(10));
+  }
+
+  /**
+   * Method to get an ExecutorService for a given sequence key. If an ExecutorService for the
+   * sequence key does not exist, it creates a new one.
+   *
+   * @param sequenceKey The key for the sequence of tasks to be executed.
+   * @return a single-thread executor that does not support any shutdown action.
+   */
+  @Override
+  public ExecutorService getExecutorService(Object sequenceKey) {
+    return this.sequentialExecutors.computeIfAbsent(
+        bucketOf(sequenceKey),
+        bucket -> new ShutdownDisabledExecutorService(Executors.newSingleThreadExecutor(
+            ThreadFactories.newPlatformThreadFactory("sequential-executor"))));
+  }
+
+  /** Method to shut down all ExecutorService instances and wait for them to terminate. */
+  @Override
+  public void close() {
+    sequentialExecutors.values().forEach(ShutdownDisabledExecutorService::shutdownDelegate);
+    awaitForever().until(this::isTerminated);
+  }
+
+  private int bucketOf(Object sequenceKey) {
+    return floorMod(Objects.hash(sequenceKey), this.concurrency);
+  }
+
+  /** Method to terminate all ExecutorService instances. */
+  @Override
+  public void terminate() {
+    sequentialExecutors.values().parallelStream()
+        .forEach(ShutdownDisabledExecutorService::shutdownDelegate);
+  }
+
+  /**
+   * Method to check if all ExecutorService instances are terminated.
+   *
+   * @return True if all ExecutorService instances are terminated, false otherwise.
+   */
+  @Override
+  public boolean isTerminated() {
+    return sequentialExecutors.values().stream().allMatch(ExecutorService::isTerminated);
+  }
+
+  /**
+   * Method to terminate all ExecutorService instances immediately.
+   *
+   * @return A list of tasks that never commenced execution.
+   */
+  @Override
+  public List<Runnable> terminateNow() {
+    return sequentialExecutors.values().parallelStream()
+        .map(ShutdownDisabledExecutorService::shutdownDelegateNow)
+        .flatMap(Collection::stream)
+        .toList();
+  }
+
+  /**
+   * An {@link ExecutorService} that doesn't support shut down.
+   *
+   * @author Qingtian Wang
+   */
+  @ToString
+  static final class ShutdownDisabledExecutorService implements ExecutorService {
+
+    private static final String SHUTDOWN_UNSUPPORTED_MESSAGE =
+        "Shutdown not supported: Tasks being executed by this service may be from unrelated owners; shutdown"
+            + " features are disabled to prevent undesired task cancellation on other owners";
+
+    @Delegate(excludes = ShutdownOperations.class)
+    private final ExecutorService delegate;
 
     /**
-     * Private constructor for the ConseqServiceFactory class.
+     * Constructor for the ShutdownDisabledExecutorService class.
      *
-     * @param concurrency The maximum number of unrelated tasks that can be executed concurrently.
+     * @param delegate The delegate ExecutorService to run the submitted tasks.
      */
-    private ConseqServiceFactory(int concurrency) {
-        if (concurrency <= 0) {
-            throw new IllegalArgumentException("expecting positive concurrency, but given: " + concurrency);
-        }
-        this.concurrency = concurrency;
-        this.sequentialExecutors = new ConcurrentHashMap<>(concurrency);
+    public ShutdownDisabledExecutorService(ExecutorService delegate) {
+      this.delegate = delegate;
     }
 
     /**
-     * Factory method to create an instance of ConseqServiceFactory with default concurrency.
-     *
-     * @return An instance of ConseqServiceFactory.
-     */
-    public static @Nonnull ConseqServiceFactory instance() {
-        return instance(DEFAULT_CONCURRENCY);
-    }
-
-    /**
-     * Factory method to create an instance of ConseqServiceFactory with specified concurrency.
-     *
-     * @param concurrency The maximum number of tasks that can be executed in parallel.
-     * @return An instance of ConseqServiceFactory.
-     */
-    public static @Nonnull ConseqServiceFactory instance(int concurrency) {
-        return new ConseqServiceFactory(concurrency);
-    }
-
-    private static ConditionFactory awaitForever() {
-        return await().forever().pollDelay(Duration.ofMillis(10));
-    }
-
-    /**
-     * Method to get an ExecutorService for a given sequence key. If an ExecutorService for the sequence key does not
-     * exist, it creates a new one.
-     *
-     * @param sequenceKey The key for the sequence of tasks to be executed.
-     * @return a single-thread executor that does not support any shutdown action.
+     * Does not allow shutdown because the same executor could be running task(s) for different
+     * sequence keys, albeit in sequential/FIFO order. Shutdown of the executor would stop
+     * executions for all tasks, which is disallowed to prevent undesired task-execute coordination.
      */
     @Override
-    public ExecutorService getExecutorService(Object sequenceKey) {
-        return this.sequentialExecutors.computeIfAbsent(
-                bucketOf(sequenceKey),
-                bucket -> new ShutdownDisabledExecutorService(Executors.newSingleThreadExecutor(
-                        ThreadFactories.newPlatformThreadFactory("sequential-executor"))));
+    public void shutdown() {
+      throw new UnsupportedOperationException(SHUTDOWN_UNSUPPORTED_MESSAGE);
     }
 
-    /** Method to shut down all ExecutorService instances and wait for them to terminate. */
+    /** @see #shutdown() */
     @Override
-    public void close() {
-        sequentialExecutors.values().forEach(ShutdownDisabledExecutorService::shutdownDelegate);
-        awaitForever().until(this::isTerminated);
+    public @Nonnull List<Runnable> shutdownNow() {
+      throw new UnsupportedOperationException(SHUTDOWN_UNSUPPORTED_MESSAGE);
     }
 
-    private int bucketOf(Object sequenceKey) {
-        return floorMod(Objects.hash(sequenceKey), this.concurrency);
-    }
-
-    /** Method to terminate all ExecutorService instances. */
-    @Override
-    public void terminate() {
-        sequentialExecutors.values().parallelStream().forEach(ShutdownDisabledExecutorService::shutdownDelegate);
+    /** Method to shut down the delegate ExecutorService. */
+    void shutdownDelegate() {
+      this.delegate.shutdown();
     }
 
     /**
-     * Method to check if all ExecutorService instances are terminated.
-     *
-     * @return True if all ExecutorService instances are terminated, false otherwise.
-     */
-    @Override
-    public boolean isTerminated() {
-        return sequentialExecutors.values().stream().allMatch(ExecutorService::isTerminated);
-    }
-
-    /**
-     * Method to terminate all ExecutorService instances immediately.
+     * Method to shut down the delegate ExecutorService immediately.
      *
      * @return A list of tasks that never commenced execution.
      */
-    @Override
-    public List<Runnable> terminateNow() {
-        return sequentialExecutors.values().parallelStream()
-                .map(ShutdownDisabledExecutorService::shutdownDelegateNow)
-                .flatMap(Collection::stream)
-                .toList();
+    @Nonnull
+    List<Runnable> shutdownDelegateNow() {
+      return this.delegate.shutdownNow();
     }
 
-    /**
-     * An {@link ExecutorService} that doesn't support shut down.
-     *
-     * @author Qingtian Wang
-     */
-    @ToString
-    static final class ShutdownDisabledExecutorService implements ExecutorService {
+    /** Methods that require complete overriding instead of delegation/decoration */
+    private interface ShutdownOperations {
+      void shutdown();
 
-        private static final String SHUTDOWN_UNSUPPORTED_MESSAGE =
-                "Shutdown not supported: Tasks being executed by this service may be from unrelated owners; shutdown"
-                        + " features are disabled to prevent undesired task cancellation on other owners";
+      List<Runnable> shutdownNow();
 
-        @Delegate(excludes = ShutdownOperations.class)
-        private final ExecutorService delegate;
-
-        /**
-         * Constructor for the ShutdownDisabledExecutorService class.
-         *
-         * @param delegate The delegate ExecutorService to run the submitted tasks.
-         */
-        public ShutdownDisabledExecutorService(ExecutorService delegate) {
-            this.delegate = delegate;
-        }
-
-        /**
-         * Does not allow shutdown because the same executor could be running task(s) for different sequence keys,
-         * albeit in sequential/FIFO order. Shutdown of the executor would stop executions for all tasks, which is
-         * disallowed to prevent undesired task-execute coordination.
-         */
-        @Override
-        public void shutdown() {
-            throw new UnsupportedOperationException(SHUTDOWN_UNSUPPORTED_MESSAGE);
-        }
-
-        /** @see #shutdown() */
-        @Override
-        public @Nonnull List<Runnable> shutdownNow() {
-            throw new UnsupportedOperationException(SHUTDOWN_UNSUPPORTED_MESSAGE);
-        }
-
-        /** Method to shut down the delegate ExecutorService. */
-        void shutdownDelegate() {
-            this.delegate.shutdown();
-        }
-
-        /**
-         * Method to shut down the delegate ExecutorService immediately.
-         *
-         * @return A list of tasks that never commenced execution.
-         */
-        @Nonnull
-        List<Runnable> shutdownDelegateNow() {
-            return this.delegate.shutdownNow();
-        }
-
-        /** Methods that require complete overriding instead of delegation/decoration */
-        private interface ShutdownOperations {
-            void shutdown();
-
-            List<Runnable> shutdownNow();
-
-            void close();
-        }
+      void close();
     }
+  }
 }
