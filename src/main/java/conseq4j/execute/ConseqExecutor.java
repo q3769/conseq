@@ -46,11 +46,11 @@ import lombok.ToString;
 @ToString
 public final class ConseqExecutor implements SequentialExecutor, Terminable, AutoCloseable {
   /**
-   * A concurrent hash map that stores the active sequential tasks, where the key is the sequence
-   * key, and the value is a CompletableFuture representing the currently executing task for that
-   * sequence key.
+   * A concurrent hash map whose entries represent execution queues of sequential tasks. Each key in
+   * the map is a sequence key, and the value is a CompletableFuture. Each completion stage of the
+   * CompletableFuture represents a sequentially executed task for the corresponding sequence key.
    */
-  private final Map<Object, CompletableFuture<?>> activeSequentialTasks = new ConcurrentHashMap<>();
+  private final Map<Object, CompletableFuture<?>> executionQueues = new ConcurrentHashMap<>();
 
   /**
    * An ExecutorService used for administrative tasks, such as cleaning up completed tasks from the
@@ -150,14 +150,14 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
   @Override
   @SuppressWarnings("unchecked")
   public <T> @NonNull Future<T> submit(Callable<T> task, Object sequenceKey) {
-    CompletableFuture<?> taskCompletable = activeSequentialTasks.compute(
+    CompletableFuture<?> taskCompletable = executionQueues.compute(
         sequenceKey,
         (k, vCompletable) -> (vCompletable == null)
             ? CompletableFuture.supplyAsync(() -> callUnchecked(task), workerExecutorService)
             : vCompletable.handleAsync((r, e) -> callUnchecked(task), workerExecutorService));
     CompletableFuture<?> copy = taskCompletable.copy();
     taskCompletable.whenCompleteAsync(
-        (r, e) -> activeSequentialTasks.computeIfPresent(
+        (r, e) -> executionQueues.computeIfPresent(
             sequenceKey, (k, vCompletable) -> vCompletable.isDone() ? null : vCompletable),
         adminExecutorService);
     return (Future<T>) new DefensiveFuture<>(copy);
@@ -176,7 +176,7 @@ public final class ConseqExecutor implements SequentialExecutor, Terminable, Aut
    * @return true if there are no pending tasks, false otherwise.
    */
   boolean noTaskPending() {
-    return activeSequentialTasks.isEmpty();
+    return executionQueues.isEmpty();
   }
 
   /** Initiates an orderly shutdown of the workerExecutorService and adminExecutorService. */
