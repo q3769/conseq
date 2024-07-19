@@ -21,8 +21,8 @@ execution order at the same time.
 
 ## Prerequisite
 
-- Java 8 or better for versions before 20230922.20230925.0 (exclusive)
-- Java 21 or better for versions after 20230922.20230925.0 (inclusive)
+- Java 8+ for versions before 20230922.20230925.0 (exclusive)
+- Java 21+ for versions after 20230922.20230925.0 (inclusive)
 
 ## Get it...
 
