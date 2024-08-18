@@ -112,6 +112,16 @@
                 </repository>
             </distributionManagement>
         </profile>
+        <profile>
+            <id>github</id>
+            <distributionManagement>
+                <repository>
+                    <id>github</id>
+                    <name>GitHub Apache Maven Packages</name>
+                    <url>https://maven.pkg.github.com/q3769/conseq4j</url>
+                </repository>
+            </distributionManagement>
+        </profile>
     </profiles>
     <build>
         <plugins>
@@ -171,7 +181,6 @@
                         <palantirJavaFormat>
                             <version>2.47.0</version>
                             <style>GOOGLE</style>
-                            <!--                            <style>PALANTIR</style>-->
                             <formatJavadoc>true</formatJavadoc>
                         </palantirJavaFormat>
                         <removeUnusedImports/>
