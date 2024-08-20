@@ -117,7 +117,6 @@
             <distributionManagement>
                 <repository>
                     <id>github</id>
-                    <name>GitHub Apache Maven Packages</name>
                     <url>https://maven.pkg.github.com/q3769/conseq4j</url>
                 </repository>
             </distributionManagement>
