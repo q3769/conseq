@@ -94,7 +94,7 @@
                         <version>1.7.0</version>
                         <extensions>true</extensions>
                         <configuration>
-                            <serverId>nexus</serverId>
+                            <serverId>ossrh</serverId>
                             <nexusUrl>https://oss.sonatype.org/</nexusUrl>
                             <autoReleaseAfterClose>true</autoReleaseAfterClose>
                         </configuration>
