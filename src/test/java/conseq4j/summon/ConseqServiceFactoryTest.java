@@ -25,7 +25,6 @@ package conseq4j.summon;
 
 import static conseq4j.TestUtils.createSpyingTasks;
 import static conseq4j.TestUtils.getAllCompleteNormal;
-import static java.util.stream.Collectors.toList;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.google.common.collect.Range;
@@ -37,7 +36,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.stream.Collectors;
 import lombok.NonNull;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -47,7 +45,7 @@ class ConseqServiceFactoryTest {
   private static final int TASK_COUNT = 100;
 
   private static List<Callable<SpyingTask>> toCallables(@NonNull List<SpyingTask> tasks) {
-    return tasks.stream().map(SpyingTask::toCallable).collect(Collectors.toList());
+    return tasks.stream().map(SpyingTask::toCallable).toList();
   }
 
   void assertSingleThread(@NonNull List<SpyingTask> tasks) {
@@ -66,7 +64,7 @@ class ConseqServiceFactoryTest {
           .map(task -> withHigherConcurrencyThanTaskCount
               .getExecutorService(UUID.randomUUID())
               .submit(task.toCallable()))
-          .collect(toList());
+          .toList();
     }
 
     final long totalRunThreads = getAllCompleteNormal(futures).stream()
@@ -88,7 +86,7 @@ class ConseqServiceFactoryTest {
       lowConcurrencyStart = System.nanoTime();
       lowConcurrencyFutures = sameTasks.stream()
           .map(t -> withLowConcurrency.getExecutorService(UUID.randomUUID()).submit(t.toCallable()))
-          .collect(toList());
+          .toList();
     }
     TestUtils.awaitFutures(lowConcurrencyFutures);
     long lowConcurrencyTime = System.nanoTime() - lowConcurrencyStart;
@@ -101,7 +99,7 @@ class ConseqServiceFactoryTest {
       highConcurrencyFutures = sameTasks.stream()
           .map(task ->
               withHighConcurrency.getExecutorService(UUID.randomUUID()).submit(task.toCallable()))
-          .collect(toList());
+          .toList();
     }
     TestUtils.awaitFutures(highConcurrencyFutures);
     long highConcurrencyTime = System.nanoTime() - highConcurrencyStart;
